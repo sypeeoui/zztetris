@@ -24,6 +24,18 @@ Inspired by fio's four-tris
 - *Full* fumen import/export sets your board state history as the fumen pages and vice versa.
 - Drawing garbage on the board
 
+## Engine API default URL config
+
+Edit `engine.config.json` to set the default engine URL used by the Evaluation panel.
+
+```json
+{
+  "engineApiBase": "http://localhost:8080"
+}
+```
+
+Accepted keys are `engineApiBase` (preferred), `defaultEngineUrl`, and `evalApiBase`.
+
 ## TODO
 
 - fix DAS stuff more?

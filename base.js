@@ -300,6 +300,8 @@ const pieceBaseCoords = {
 	],
 };
 var evalUiReady = false;
+var evalConfigLoadPromise = null;
+var evalServerDefaultApiBase = '';
 var evalState = {
 	enabled: false,
 	optionsHidden: true,
@@ -725,7 +727,53 @@ function getEvalElement(id) {
 	return document.getElementById(id);
 }
 
+function normalizeEvalApiBase(rawValue) {
+	return (rawValue || '').trim().replace(/\/+$/, '');
+}
+
+function applyConfiguredEvalApiBaseToInput() {
+	const apiBaseInput = getEvalElement('evalApiBase');
+	if (!apiBaseInput || LS.evalApiBase) return;
+
+	const originDefault = normalizeEvalApiBase(window.location?.origin || '');
+	const currentValue = normalizeEvalApiBase(apiBaseInput.value);
+	if (!currentValue || currentValue == originDefault) {
+		apiBaseInput.value = getDefaultEvalApiBase();
+	}
+}
+
+function loadEvalServerConfig() {
+	if (evalConfigLoadPromise) return evalConfigLoadPromise;
+
+	evalConfigLoadPromise = fetch('./engine.config.json', {
+		cache: 'no-store',
+	})
+		.then((res) => {
+			if (!res.ok) return null;
+			return res.json();
+		})
+		.then((config) => {
+			if (!config || typeof config != 'object') return;
+			const configuredApiBase = normalizeEvalApiBase(
+				config.engineApiBase || config.defaultEngineUrl || config.evalApiBase
+			);
+			if (configuredApiBase) {
+				evalServerDefaultApiBase = configuredApiBase;
+				applyConfiguredEvalApiBaseToInput();
+			}
+		})
+		.catch(() => {
+			// Config file is optional; fallback will be used.
+		});
+
+	return evalConfigLoadPromise;
+}
+
 function getDefaultEvalApiBase() {
+	if (evalServerDefaultApiBase) {
+		return evalServerDefaultApiBase;
+	}
+
 	const origin = (window.location?.origin || '').trim();
 	if (origin && origin != 'null') {
 		return origin.replace(/\/$/, '');
@@ -1062,7 +1110,7 @@ async function playRoute(route) {
 	}
 
 	const apiBaseInput = getEvalElement('evalApiBase');
-	const apiBase = (apiBaseInput?.value || getDefaultEvalApiBase()).trim().replace(/\/$/, '');
+	const apiBase = normalizeEvalApiBase(apiBaseInput?.value || getDefaultEvalApiBase());
 	const ips = getPlaybackInputRate();
 	const stepDelayMs = 1000 / Math.max(ips, 0.1);
 	const gravEl = document.getElementById('grav');
@@ -1321,7 +1369,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 	if (evalState.inFlight) return;
 
 	const apiBaseInput = getEvalElement('evalApiBase');
-	const apiBase = (apiBaseInput?.value || getDefaultEvalApiBase()).trim().replace(/\/$/, '');
+	const apiBase = normalizeEvalApiBase(apiBaseInput?.value || getDefaultEvalApiBase());
 	if (!apiBase) {
 		setEvalStatus('Engine API address is empty.', true);
 		return;
@@ -1459,6 +1507,7 @@ function initEvaluationUi() {
 		apiBaseInput.value = LS.evalApiBase;
 	} else {
 		apiBaseInput.value = getDefaultEvalApiBase();
+		loadEvalServerConfig();
 	}
 
 	if (LS.evalReachabilityMode && ['strict', 'relaxed', 'off'].includes(LS.evalReachabilityMode)) {
