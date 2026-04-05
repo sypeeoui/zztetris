@@ -222,6 +222,8 @@ var Ldn = (Rdn = false);
 var rot = 0;
 var oldcombo = 0;
 var oldb2b = 0;
+var combo = -1;
+var b2b = 0;
 var dasID = 0;
 var sdINT = (dasINT = null);
 var xPOS = spawn[0];
@@ -243,6 +245,77 @@ gridCtx.fillRect(0, 0, cellSize, cellSize);
 gridCtx.strokeStyle = '#3A3A3A';
 gridCtx.strokeRect(0, 0, cellSize, cellSize);
 var pattern = ctx.createPattern(gridCvs, 'repeat');
+const enginePieceToChar = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+const charToEnginePiece = {
+	I: 0,
+	O: 1,
+	T: 2,
+	S: 3,
+	Z: 4,
+	J: 5,
+	L: 6,
+};
+const pieceBaseCoords = {
+	I: [
+		[-1, 0],
+		[0, 0],
+		[1, 0],
+		[2, 0],
+	],
+	O: [
+		[0, 0],
+		[1, 0],
+		[0, 1],
+		[1, 1],
+	],
+	T: [
+		[-1, 0],
+		[0, 0],
+		[1, 0],
+		[0, 1],
+	],
+	L: [
+		[-1, 0],
+		[0, 0],
+		[1, 0],
+		[1, 1],
+	],
+	J: [
+		[-1, 0],
+		[0, 0],
+		[1, 0],
+		[-1, 1],
+	],
+	S: [
+		[-1, 0],
+		[0, 0],
+		[0, 1],
+		[1, 1],
+	],
+	Z: [
+		[-1, 1],
+		[0, 1],
+		[0, 0],
+		[1, 0],
+	],
+};
+var evalUiReady = false;
+var evalState = {
+	enabled: false,
+	optionsHidden: true,
+	inFlight: false,
+	playbackInFlight: false,
+	lastRequestAt: 0,
+	lastAppliedHash: '',
+	selectedRouteKey: 'best_pv',
+	routeFollowMode: 'pv',
+	hoverRouteKey: '',
+	reachabilityMode: 'relaxed',
+	playbackInputsPerSecond: 2,
+	latestData: null,
+	overlayCells: [],
+};
+var evalControlApi = null;
 for (let i = 0; i < boardSize[1]; i++) {
 	board.push(aRow());
 }
@@ -553,7 +626,7 @@ function undo() {
         {
             combo=oldcombo;
         }
-        if(b2b >= 1 && (tspin || cleared == 4))
+		if(b2b >= 1 && (tspin || mini || cleared == 4))
         {   
             b2b-=1;
         }
@@ -568,6 +641,7 @@ function undo() {
 		updateGhost();
 		setShape();
 		updateQueue();
+		syncEvalChainInputsFromGame();
 	}
 }
 
@@ -586,6 +660,891 @@ function redo() {
 		updateGhost();
 		setShape();
 		updateQueue();
+		syncEvalChainInputsFromGame();
+	}
+}
+
+function rotateCoordForEngine(rotation, x, y) {
+	switch (rotation % 4) {
+		case 1:
+			return { x: y, y: -x };
+		case 2:
+			return { x: -x, y: -y };
+		case 3:
+			return { x: -y, y: x };
+		default:
+			return { x, y };
+	}
+}
+
+function getMoveCells(moveObj) {
+	const pieceChar = enginePieceToChar[moveObj.piece];
+	const base = pieceBaseCoords[pieceChar];
+	if (!base) return [];
+
+	return base.map((coord) => {
+		const rotated = rotateCoordForEngine(moveObj.rotation, coord[0], coord[1]);
+		return {
+			x: moveObj.x + rotated.x,
+			y: moveObj.y + rotated.y,
+			piece: pieceChar,
+		};
+	});
+}
+
+function boardRowsForEngine() {
+	const rows = new Array(40).fill(0);
+	for (let i = 0; i < boardSize[1]; i++) {
+		for (let x = 0; x < boardSize[0]; x++) {
+			if (board[i][x].t == 1) {
+				const engineY = boardSize[1] - 1 - i;
+				rows[engineY] |= 1 << x;
+			}
+		}
+	}
+	return rows;
+}
+
+function queueForEngine(maxLen = 14) {
+	const clean = queue.filter((p) => p != '|').slice(0, maxLen);
+	return clean.map((p) => charToEnginePiece[p]).filter((v) => v !== undefined);
+}
+
+function getEvaluationStateHash() {
+	const rows = boardRowsForEngine();
+	const queueIds = queueForEngine();
+	return JSON.stringify({
+		rows,
+		piece,
+		holdP,
+		queue: queueIds,
+	});
+}
+
+function getEvalElement(id) {
+	return document.getElementById(id);
+}
+
+function getDefaultEvalApiBase() {
+	const origin = (window.location?.origin || '').trim();
+	if (origin && origin != 'null') {
+		return origin.replace(/\/$/, '');
+	}
+	return '';
+}
+
+function setEvalStatus(text, isError = false) {
+	const statusEl = getEvalElement('evalStatus');
+	if (!statusEl) return;
+	statusEl.textContent = text;
+	statusEl.style.color = isError ? '#ff8f8f' : '#bdbdbd';
+}
+
+function formatEvalNumber(v) {
+	return typeof v == 'number' ? v.toFixed(3) : '-';
+}
+
+function getReachabilityButtonText() {
+	return `Reachability: ${evalState.reachabilityMode}`;
+}
+
+function getPlaybackInputRate() {
+	const inputEl = getEvalElement('evalInputRate');
+	const raw = inputEl ? parseFloat(inputEl.value) : evalState.playbackInputsPerSecond;
+	if (Number.isFinite(raw) && raw > 0) {
+		evalState.playbackInputsPerSecond = raw;
+		return raw;
+	}
+	return evalState.playbackInputsPerSecond || 2;
+}
+
+function currentComboForEngine() {
+	if (typeof combo != 'number') return 0;
+	return Math.max(0, Math.floor(combo));
+}
+
+function currentB2BForEngine() {
+	if (typeof b2b != 'number') return 0;
+	return Math.max(0, Math.floor(b2b));
+}
+
+function syncEvalChainInputsFromGame() {
+	const comboEl = getEvalElement('evalCurrentCombo');
+	const b2bEl = getEvalElement('evalCurrentB2b');
+
+	if (comboEl) {
+		comboEl.value = String(currentComboForEngine());
+	}
+	if (b2bEl) {
+		b2bEl.value = String(currentB2BForEngine());
+	}
+}
+
+function applyEvalChainInputsToGame() {
+	const comboEl = getEvalElement('evalCurrentCombo');
+	const b2bEl = getEvalElement('evalCurrentB2b');
+
+	if (comboEl) {
+		const parsedCombo = Math.floor(parseFloat(comboEl.value));
+		if (Number.isFinite(parsedCombo) && parsedCombo >= 0) {
+			combo = parsedCombo;
+			oldcombo = combo;
+		}
+	}
+
+	if (b2bEl) {
+		const parsedB2b = Math.floor(parseFloat(b2bEl.value));
+		if (Number.isFinite(parsedB2b) && parsedB2b >= 0) {
+			b2b = parsedB2b;
+			oldb2b = b2b;
+		}
+	}
+
+	syncEvalChainInputsFromGame();
+}
+
+function sleepMs(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readNumberInput(id, fallback, minValue = null) {
+	const el = getEvalElement(id);
+	if (!el) return fallback;
+	const value = parseFloat(el.value);
+	if (!Number.isFinite(value)) return fallback;
+	if (minValue !== null && value < minValue) return fallback;
+	return value;
+}
+
+function getSearchOverridesFromUi() {
+	return {
+		beam_width: Math.floor(readNumberInput('evalBeamWidth', 800, 1)),
+		depth: Math.floor(readNumberInput('evalDepth', 14, 1)),
+		futility_delta: readNumberInput('evalFutilityDelta', 15.0, 0),
+		time_budget_ms: Math.floor(readNumberInput('evalTimeBudgetMs', 50, 1)),
+		use_tt: !!getEvalElement('evalUseTt')?.checked,
+		extend_queue_7bag: !!getEvalElement('evalExtendQueue')?.checked,
+		attack_weight: readNumberInput('evalAttackWeight', 0.5, 0),
+		chain_weight: readNumberInput('evalChainWeight', 1.0, 0),
+		context_weight: readNumberInput('evalContextWeight', 0.1, 0),
+		board_weight: readNumberInput('evalBoardWeight', 1.0, 0),
+		quiescence_max_extensions: Math.floor(readNumberInput('evalQMaxExtensions', 3, 0)),
+		quiescence_beam_fraction: readNumberInput('evalQBeamFraction', 0.15, 0),
+	};
+}
+
+function hexToRgba(hex, alpha) {
+	let cleaned = (hex || '').replace('#', '');
+	if (cleaned.length == 3) {
+		cleaned = cleaned
+			.split('')
+			.map((c) => c + c)
+			.join('');
+	}
+	if (cleaned.length != 6) {
+		return `rgba(255,255,255,${alpha})`;
+	}
+	const r = parseInt(cleaned.slice(0, 2), 16);
+	const g = parseInt(cleaned.slice(2, 4), 16);
+	const b = parseInt(cleaned.slice(4, 6), 16);
+	return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function applyCompactOptionsVisibility() {
+	const panel = document.querySelector('.board-settings');
+	const toggleBtn = getEvalElement('evalToggleOptionsBtn');
+	if (!panel || !toggleBtn) return;
+
+	if (evalState.enabled) {
+		toggleBtn.disabled = false;
+		if (evalState.optionsHidden) {
+			panel.classList.add('board-settings--compact');
+			toggleBtn.textContent = 'Show Options';
+		} else {
+			panel.classList.remove('board-settings--compact');
+			toggleBtn.textContent = 'Hide Options';
+		}
+	} else {
+		panel.classList.remove('board-settings--compact');
+		toggleBtn.disabled = true;
+		toggleBtn.textContent = 'Show Options';
+	}
+}
+
+function buildEvaluationRoutes(data) {
+	const routes = [];
+	const bestPv = data.pv && data.pv.length > 0 ? data.pv : data.best_move ? [data.best_move] : [];
+	if (bestPv.length > 0) {
+		routes.push({
+			key: 'best_pv',
+			label: 'Best PV',
+			moves: bestPv,
+			score: data.score,
+			probability: null,
+			hold_used: data.hold_used,
+		});
+	}
+
+	if (Array.isArray(data.candidates)) {
+		data.candidates.forEach((candidate, idx) => {
+			const pct = typeof candidate.probability == 'number' ? ` ${(candidate.probability * 100).toFixed(1)}%` : '';
+			routes.push({
+				key: `candidate_${idx}`,
+				label: `Candidate ${idx + 1}${pct}`,
+				moves: [candidate],
+				score: candidate.score,
+				probability: candidate.probability,
+				hold_used: candidate.hold_used,
+			});
+		});
+	}
+
+	return routes;
+}
+
+function preferredRouteKeyForMode(routes) {
+	if (!routes || !routes.length) return '';
+
+	if (evalState.routeFollowMode == 'candidate1') {
+		const candidate1 = routes.find((r) => r.key == 'candidate_0');
+		if (candidate1) return candidate1.key;
+	}
+
+	const bestPv = routes.find((r) => r.key == 'best_pv');
+	if (bestPv) return bestPv.key;
+
+	return routes[0].key;
+}
+
+function setRouteFollowModeFromSelection(routeKey) {
+	if (routeKey == 'best_pv') {
+		evalState.routeFollowMode = 'pv';
+		LS.evalRouteFollowMode = 'pv';
+		return;
+	}
+
+	evalState.routeFollowMode = 'candidate1';
+	LS.evalRouteFollowMode = 'candidate1';
+}
+
+function moveToInputRequest(moveObj) {
+	return {
+		piece: moveObj.piece,
+		rotation: moveObj.rotation,
+		x: moveObj.x,
+		y: moveObj.y,
+		spin: moveObj.spin,
+	};
+}
+
+async function getInputCountForMove(apiBase, rows, moveObj, force) {
+	const res = await fetch(`${apiBase}/v1/get_input_sequence`, {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({
+			board_rows: rows,
+			mv: moveToInputRequest(moveObj),
+			use_finesse: false,
+			force,
+		}),
+	});
+
+	if (!res.ok) return -1;
+	const data = await res.json();
+	if (typeof data.input_count == 'number') return data.input_count;
+	if (Array.isArray(data.inputs)) return data.inputs.length;
+	return -1;
+}
+
+async function getInputSequenceForMove(apiBase, rows, moveObj, force) {
+	const res = await fetch(`${apiBase}/v1/get_input_sequence`, {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify({
+			board_rows: rows,
+			mv: moveToInputRequest(moveObj),
+			use_finesse: false,
+			force,
+		}),
+	});
+
+	if (!res.ok) return [];
+	const data = await res.json();
+	return Array.isArray(data.inputs) ? data.inputs : [];
+}
+
+function reachabilityMoveVariants(moveObj) {
+	if (!moveObj) return [];
+
+	const variants = [];
+	const seen = new Set();
+	let allowedSpins;
+	if (moveObj.piece == 2) {
+		// T piece: NoSpin/Mini/Full are all valid labels.
+		allowedSpins = [0, 1, 2];
+	} else if (moveObj.piece == 1) {
+		// O piece: no spin classification.
+		allowedSpins = [0];
+	} else {
+		// I/J/L/S/Z: no-spin or all-spin mini only.
+		allowedSpins = [0, 1];
+	}
+
+	const preferredSpin = Number.isInteger(moveObj.spin) ? moveObj.spin : 0;
+	const spins = [preferredSpin, ...allowedSpins].filter((v) => allowedSpins.includes(v));
+
+	for (const spin of spins) {
+		const variant = {
+			piece: moveObj.piece,
+			rotation: moveObj.rotation,
+			x: moveObj.x,
+			y: moveObj.y,
+			spin,
+		};
+		const key = `${variant.piece}:${variant.rotation}:${variant.x}:${variant.y}:${variant.spin}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		variants.push(variant);
+	}
+
+	return variants;
+}
+
+function applyEngineInputCode(code) {
+	if (!evalControlApi) return false;
+
+	switch (code) {
+		case 1:
+			evalControlApi.moveLeft();
+			return true;
+		case 2:
+			evalControlApi.moveRight();
+			return true;
+		case 3:
+				evalControlApi.moveLeft();
+			return true;
+		case 4:
+				evalControlApi.moveRight();
+			return true;
+		case 5:
+			evalControlApi.rotateCw();
+			return true;
+		case 6:
+			evalControlApi.rotateCcw();
+			return true;
+		case 7:
+			evalControlApi.rotateFlip();
+			return true;
+		case 8:
+			evalControlApi.softDrop();
+			return true;
+		case 9:
+			evalControlApi.hardDrop();
+			return true;
+		default:
+			return false;
+	}
+}
+
+async function playRoute(route) {
+	if (!route || !route.moves?.length) return;
+	if (!evalControlApi) {
+		setEvalStatus('Playback unavailable before game init.', true);
+		return;
+	}
+	if (evalState.playbackInFlight) {
+		setEvalStatus('Playback already running.');
+		return;
+	}
+
+	const apiBaseInput = getEvalElement('evalApiBase');
+	const apiBase = (apiBaseInput?.value || getDefaultEvalApiBase()).trim().replace(/\/$/, '');
+	const ips = getPlaybackInputRate();
+	const stepDelayMs = 1000 / Math.max(ips, 0.1);
+	const gravEl = document.getElementById('grav');
+	const gravWasChecked = gravEl ? gravEl.checked : false;
+	if (gravEl) gravEl.checked = false;
+
+	evalState.playbackInFlight = true;
+	setEvalStatus(`Playing route at ${ips.toFixed(1)} input/s...`);
+
+	try {
+		if (route.hold_used && evalControlApi.hold) {
+			evalControlApi.hold();
+			await sleepMs(stepDelayMs);
+		}
+
+		const moveObj = route.moves[0];
+		const rows = boardRowsForEngine();
+		let inputs = await getInputSequenceForMove(apiBase, rows, moveObj, false);
+		if (!inputs.length) {
+			inputs = await getInputSequenceForMove(apiBase, rows, moveObj, true);
+		}
+
+		if (!inputs.length) {
+			setEvalStatus('Playback stopped: no input sequence for selected move.', true);
+			return;
+		}
+
+		for (const code of inputs) {
+			applyEngineInputCode(code);
+			await sleepMs(stepDelayMs);
+		}
+
+		setEvalStatus('Move playback complete.');
+	} catch (error) {
+		setEvalStatus(`Playback failed: ${error.message}`, true);
+	} finally {
+		if (gravEl) gravEl.checked = gravWasChecked;
+		evalState.playbackInFlight = false;
+	}
+}
+
+async function isMoveReachable(apiBase, rows, moveObj, mode) {
+	if (!moveObj) return false;
+
+	if (mode == 'strict') {
+		const strictVariant = {
+			piece: moveObj.piece,
+			rotation: moveObj.rotation,
+			x: moveObj.x,
+			y: moveObj.y,
+			spin: Number.isInteger(moveObj.spin) ? moveObj.spin : 0,
+		};
+		const strictCount = await getInputCountForMove(apiBase, rows, strictVariant, false);
+		return strictCount > 0;
+	}
+
+	const variants = reachabilityMoveVariants(moveObj);
+	if (!variants.length) return false;
+
+	for (const variant of variants) {
+		const strictCount = await getInputCountForMove(apiBase, rows, variant, false);
+		if (strictCount > 0) return true;
+	}
+
+	for (const variant of variants) {
+		const forcedCount = await getInputCountForMove(apiBase, rows, variant, true);
+		if (forcedCount > 0) return true;
+	}
+
+	return false;
+}
+
+async function filterRoutesByReachability(apiBase, rows, routes, mode) {
+	if (!routes.length) return { routes: [], failedChecks: 0, relaxed: false };
+	if (mode == 'off') return { routes, failedChecks: 0, relaxed: false };
+
+	const checks = await Promise.all(
+		routes.map(async (route) => {
+			try {
+				const reachable = await isMoveReachable(apiBase, rows, route.moves?.[0], mode);
+				return { route, reachable, failed: false };
+			} catch (error) {
+				return { route, reachable: false, failed: true };
+			}
+		})
+	);
+
+	let failedChecks = 0;
+	const filtered = checks
+		.filter((entry) => {
+			if (entry.failed) failedChecks++;
+			return entry.reachable;
+		})
+		.map((entry) => entry.route);
+
+	if (mode == 'relaxed' && !filtered.length && routes.length) {
+		return { routes, failedChecks, relaxed: true };
+	}
+
+	return { routes: filtered, failedChecks, relaxed: false };
+}
+
+function renderRoutesList() {
+	const listEl = getEvalElement('evalRoutesList');
+	if (!listEl) return;
+
+	const routes = evalState.latestData?.routes || [];
+	listEl.innerHTML = '';
+
+	if (!routes.length) {
+		listEl.textContent = 'No routes yet';
+		evalState.selectedRouteKey = '';
+		evalState.hoverRouteKey = '';
+		return;
+	}
+
+	const preferredKey = preferredRouteKeyForMode(routes);
+	if (preferredKey && evalState.selectedRouteKey != preferredKey) {
+		evalState.selectedRouteKey = preferredKey;
+	}
+
+	if (!routes.some((r) => r.key == evalState.selectedRouteKey)) {
+		evalState.selectedRouteKey = preferredKey || routes[0].key;
+	}
+
+	routes.forEach((route) => {
+		const item = document.createElement('div');
+		item.className = 'eval-route-item';
+		item.title = 'Double-click to play this route';
+		if (route.key == evalState.selectedRouteKey) {
+			item.classList.add('eval-route-item--active');
+		}
+		const scoreText = `score ${formatEvalNumber(route.score)}`;
+		const probText = typeof route.probability == 'number' ? `, p ${(route.probability * 100).toFixed(1)}%` : '';
+		item.textContent = `${route.label} | ${scoreText}${probText}`;
+
+		item.addEventListener('mouseenter', () => {
+			evalState.hoverRouteKey = route.key;
+			rebuildEvaluationOverlay();
+		});
+
+		item.addEventListener('mouseleave', () => {
+			evalState.hoverRouteKey = '';
+			rebuildEvaluationOverlay();
+		});
+
+		item.addEventListener('click', () => {
+			setRouteFollowModeFromSelection(route.key);
+			evalState.selectedRouteKey = preferredRouteKeyForMode(routes);
+			evalState.hoverRouteKey = evalState.selectedRouteKey;
+			renderRoutesList();
+			rebuildEvaluationOverlay();
+		});
+
+		item.addEventListener('dblclick', () => {
+			setRouteFollowModeFromSelection(route.key);
+			evalState.selectedRouteKey = preferredRouteKeyForMode(routes);
+			evalState.hoverRouteKey = evalState.selectedRouteKey;
+			renderRoutesList();
+			rebuildEvaluationOverlay();
+			const selectedRoute = routes.find((r) => r.key == evalState.selectedRouteKey) || route;
+			playRoute(selectedRoute);
+		});
+
+		listEl.appendChild(item);
+	});
+}
+
+function simulateOverlayForRoute(routeMoves, baseRows) {
+	let rows = baseRows.slice();
+	const overlay = [];
+	let visualClearLift = 0;
+
+	routeMoves.forEach((moveObj, stepIndex) => {
+		const cells = getMoveCells(moveObj);
+		if (!cells.length) return;
+
+		const legal = cells.every(
+			(cell) => inRange(cell.x, 0, 9) && inRange(cell.y, 0, 39) && (rows[cell.y] & (1 << cell.x)) == 0
+		);
+		if (!legal) return;
+
+		cells.forEach((cell) => {
+			rows[cell.y] |= 1 << cell.x;
+			overlay.push({
+				x: cell.x,
+				y: cell.y + visualClearLift,
+				piece: cell.piece,
+				step: stepIndex,
+			});
+		});
+
+		const nextRows = [];
+		for (let y = 0; y < 40; y++) {
+			if (rows[y] !== 0x3ff) {
+				nextRows.push(rows[y]);
+			}
+		}
+		const clearedLines = 40 - nextRows.length;
+		visualClearLift += clearedLines;
+
+		while (nextRows.length < 40) {
+			nextRows.push(0);
+		}
+
+		rows = nextRows;
+	});
+
+	return overlay;
+}
+
+function updateEvaluationText() {
+	const scoreEl = getEvalElement('evalScores');
+	const pvEl = getEvalElement('evalPv');
+	if (!scoreEl || !pvEl) return;
+
+	const data = evalState.latestData;
+	if (!data || !data.routes?.length) {
+		scoreEl.textContent = '';
+		pvEl.textContent = '';
+		return;
+	}
+
+	const selectedRoute = data.routes.find((r) => r.key == evalState.selectedRouteKey) || data.routes[0];
+	const scoreLine = [
+		`Best: ${formatEvalNumber(data.score)}`,
+		`Selected: ${formatEvalNumber(selectedRoute.score)}`,
+		`Hold used: ${selectedRoute.hold_used ? 'yes' : 'no'}`,
+	];
+	scoreEl.textContent = scoreLine.join('\n');
+
+	const pvSummary = selectedRoute.moves
+		.map((m) => {
+			const p = enginePieceToChar[m.piece] || '?';
+			return `${p}@x${m.x},y${m.y},r${m.rotation}`;
+		})
+		.join(' -> ');
+	pvEl.textContent = pvSummary ? `Route: ${pvSummary}` : '';
+}
+
+function rebuildEvaluationOverlay() {
+	const data = evalState.latestData;
+	if (!data || !data.routes?.length) {
+		evalState.overlayCells = [];
+		updateEvaluationText();
+		return;
+	}
+
+	const activeRouteKey = evalState.hoverRouteKey || evalState.selectedRouteKey;
+	const selectedRoute = data.routes.find((r) => r.key == activeRouteKey) || data.routes[0];
+	evalState.overlayCells = simulateOverlayForRoute(selectedRoute.moves, boardRowsForEngine());
+	updateEvaluationText();
+}
+
+async function analyzeWithEngine(forceRefresh = false) {
+	if (evalState.inFlight) return;
+
+	const apiBaseInput = getEvalElement('evalApiBase');
+	const apiBase = (apiBaseInput?.value || getDefaultEvalApiBase()).trim().replace(/\/$/, '');
+	if (!apiBase) {
+		setEvalStatus('Engine API address is empty.', true);
+		return;
+	}
+	LS.evalApiBase = apiBase;
+
+	const stateHash = getEvaluationStateHash();
+	if (!forceRefresh && stateHash == evalState.lastAppliedHash) {
+		return;
+	}
+
+	const rows = boardRowsForEngine();
+	const pieceId = charToEnginePiece[piece];
+	if (pieceId === undefined) {
+		setEvalStatus('No active piece to analyze.', true);
+		return;
+	}
+
+	evalState.inFlight = true;
+	evalState.lastRequestAt = Date.now();
+	setEvalStatus('Analyzing position...');
+
+	try {
+		const sentB2b = currentB2BForEngine();
+		const sentCombo = currentComboForEngine();
+		const sentPending = Math.floor(readNumberInput('evalPendingGarbage', 0, 0));
+		const payload = {
+			board_rows: rows,
+			current_piece: pieceId,
+			queue: queueForEngine(),
+			hold: holdP ? charToEnginePiece[holdP] : null,
+			b2b: sentB2b,
+			combo: sentCombo,
+			pending_garbage: sentPending,
+			include_candidates: true,
+			candidate_limit: 8,
+			candidate_temperature: 1.0,
+			search: getSearchOverridesFromUi(),
+		};
+
+		const res = await fetch(`${apiBase}/v1/find_best_move`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify(payload),
+		});
+
+		if (!res.ok) {
+			let msg = `HTTP ${res.status}`;
+			try {
+				const body = await res.json();
+				if (body?.error) msg = body.error;
+			} catch (error) {
+				// noop
+			}
+			throw new Error(msg);
+		}
+
+		const data = await res.json();
+		const rawRoutes = buildEvaluationRoutes(data);
+		const filtered = await filterRoutesByReachability(apiBase, rows, rawRoutes, evalState.reachabilityMode);
+		const finalRoutes = filtered.routes;
+
+		evalState.latestData = {
+			raw: data,
+			routes: finalRoutes,
+			score: data.score,
+		};
+		evalState.lastAppliedHash = stateHash;
+
+		renderRoutesList();
+		rebuildEvaluationOverlay();
+		if (!finalRoutes.length) {
+			setEvalStatus(
+				`No reachable route (sent: b2b=${sentB2b}, combo=${sentCombo}, pending=${sentPending}).`,
+				true
+			);
+		} else if (evalState.reachabilityMode == 'off') {
+			setEvalStatus(
+				`Evaluation updated (${finalRoutes.length} routes, reachability off, sent b2b=${sentB2b}, combo=${sentCombo}).`
+			);
+		} else if (filtered.relaxed) {
+			setEvalStatus(
+				`Evaluation updated (${finalRoutes.length} routes, relaxed, sent b2b=${sentB2b}, combo=${sentCombo}).`
+			);
+		} else if (filtered.failedChecks > 0) {
+			setEvalStatus(
+				`Evaluation updated (${finalRoutes.length} reachable, ${filtered.failedChecks} unchecked, sent b2b=${sentB2b}, combo=${sentCombo}).`
+			);
+		} else {
+			setEvalStatus(
+				`Evaluation updated (${finalRoutes.length} reachable, sent b2b=${sentB2b}, combo=${sentCombo}, pending=${sentPending}).`
+			);
+		}
+	} catch (error) {
+		evalState.overlayCells = [];
+		setEvalStatus(`Evaluation failed: ${error.message}`, true);
+	} finally {
+		evalState.inFlight = false;
+	}
+}
+
+function setEvaluationMode(enabled) {
+	evalState.enabled = enabled;
+	evalState.optionsHidden = enabled;
+	if (!enabled) {
+		evalState.overlayCells = [];
+		evalState.hoverRouteKey = '';
+		setEvalStatus('Evaluation is disabled.');
+	}
+	applyCompactOptionsVisibility();
+	if (enabled) {
+		analyzeWithEngine(true);
+	}
+}
+
+function initEvaluationUi() {
+	if (evalUiReady) return;
+
+	const modeToggle = getEvalElement('evalModeToggle');
+	const analyzeBtn = getEvalElement('evalAnalyzeBtn');
+	const routeList = getEvalElement('evalRoutesList');
+	const toggleOptionsBtn = getEvalElement('evalToggleOptionsBtn');
+	const reachabilityBtn = getEvalElement('evalReachabilityBtn');
+	const apiBaseInput = getEvalElement('evalApiBase');
+	const inputRateEl = getEvalElement('evalInputRate');
+	const comboInput = getEvalElement('evalCurrentCombo');
+	const b2bInput = getEvalElement('evalCurrentB2b');
+	if (!modeToggle || !analyzeBtn || !routeList || !toggleOptionsBtn || !apiBaseInput || !reachabilityBtn || !inputRateEl) {
+		return;
+	}
+
+	if (LS.evalApiBase) {
+		apiBaseInput.value = LS.evalApiBase;
+	} else {
+		apiBaseInput.value = getDefaultEvalApiBase();
+	}
+
+	if (LS.evalReachabilityMode && ['strict', 'relaxed', 'off'].includes(LS.evalReachabilityMode)) {
+		evalState.reachabilityMode = LS.evalReachabilityMode;
+	}
+
+	if (LS.evalRouteFollowMode && ['pv', 'candidate1'].includes(LS.evalRouteFollowMode)) {
+		evalState.routeFollowMode = LS.evalRouteFollowMode;
+	}
+
+	if (LS.evalPlaybackInputsPerSecond) {
+		const v = parseFloat(LS.evalPlaybackInputsPerSecond);
+		if (Number.isFinite(v) && v > 0) {
+			evalState.playbackInputsPerSecond = v;
+			inputRateEl.value = String(v);
+		}
+	}
+
+	reachabilityBtn.textContent = getReachabilityButtonText();
+
+	modeToggle.addEventListener('change', () => {
+		setEvaluationMode(modeToggle.checked);
+	});
+
+	analyzeBtn.addEventListener('click', () => {
+		analyzeWithEngine(true);
+	});
+
+	reachabilityBtn.addEventListener('click', () => {
+		const modes = ['strict', 'relaxed', 'off'];
+		const idx = modes.indexOf(evalState.reachabilityMode);
+		evalState.reachabilityMode = modes[(idx + 1) % modes.length];
+		LS.evalReachabilityMode = evalState.reachabilityMode;
+		reachabilityBtn.textContent = getReachabilityButtonText();
+		if (evalState.enabled) {
+			analyzeWithEngine(true);
+		}
+	});
+
+	inputRateEl.addEventListener('change', () => {
+		const rate = getPlaybackInputRate();
+		inputRateEl.value = String(rate);
+		LS.evalPlaybackInputsPerSecond = String(rate);
+	});
+
+	if (comboInput) {
+		comboInput.addEventListener('change', () => {
+			applyEvalChainInputsToGame();
+		});
+	}
+
+	if (b2bInput) {
+		b2bInput.addEventListener('change', () => {
+			applyEvalChainInputsToGame();
+		});
+	}
+
+	toggleOptionsBtn.addEventListener('click', () => {
+		evalState.optionsHidden = !evalState.optionsHidden;
+		applyCompactOptionsVisibility();
+	});
+
+	applyCompactOptionsVisibility();
+	syncEvalChainInputsFromGame();
+	setEvalStatus('Evaluation is disabled.');
+	evalUiReady = true;
+}
+
+function drawEvaluationOverlay() {
+	if (!evalState.enabled || !evalState.overlayCells.length) return;
+
+	for (const cell of evalState.overlayCells) {
+		const boardRowIndex = boardSize[1] - 1 - cell.y;
+		const drawY = boardRowIndex - hiddenRows + 2;
+		if (!inRange(drawY, 0, boardSize[1])) continue;
+
+		const fade = Math.pow(0.58, cell.step);
+		const fillAlpha = Math.max(0.03, 0.34 * fade);
+		const strokeAlpha = Math.max(0.08, 0.86 * fade);
+		const pieceHex = color[cell.piece] || '#ffffff';
+		ctx.fillStyle = hexToRgba(pieceHex, fillAlpha);
+		ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
+
+		ctx.strokeStyle = hexToRgba(pieceHex, strokeAlpha);
+		ctx.lineWidth = 1.5;
+		ctx.strokeRect(cell.x * cellSize + 2, drawY * cellSize + 2, cellSize - 4, cellSize - 4);
 	}
 }
 
@@ -594,6 +1553,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	// kicks = SRSX.kicks;
 	kicks = kicksets['SRS+'];
     lastCol = Math.floor(Math.random() * 10);
+	initEvaluationUi();
 
 	keysDown = 0;
 	lastKeys = 0;
@@ -741,6 +1701,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
     oldcombo = -1;
     oldb2b = 0;
 	b2b = 0;
+	syncEvalChainInputsFromGame();
 
     if (special_restart) {
         restart();
@@ -983,10 +1944,37 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		lastAction = 'HOLD';
 	}
 
+	evalControlApi = {
+		moveLeft: () => move('L'),
+		moveRight: () => move('R'),
+		dasLeft: () => {
+			for (let i = 0; i < 10; i++) {
+				const before = xPOS;
+				move('L');
+				if (xPOS == before) break;
+			}
+		},
+		dasRight: () => {
+			for (let i = 0; i < 10; i++) {
+				const before = xPOS;
+				move('R');
+				if (xPOS == before) break;
+			}
+		},
+		rotateCw: () => rotate('CW'),
+		rotateCcw: () => rotate('CCW'),
+		rotateFlip: () => rotate('R180'),
+		softDrop: () => move('SD'),
+		hardDrop: () => hardDrop(),
+		hold: () => hold(),
+	};
+
 	function checkLines() {
 		tspin = false;
 		mini = false;
+		allspinMini = false;
 		pc = false;
+		spinText = '';
 		if (piece == 'T' && lastAction == 'ROT') {
 			corners = [
 				[yPOS + 1, xPOS],
@@ -1030,6 +2018,17 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 		var cleared = clearedIndexes.length;
 
+		if (!tspin && piece != 'T' && lastAction == 'ROT' && cleared > 0) {
+			mini = true;
+			allspinMini = true;
+		}
+
+		if (tspin) {
+			spinText = mini ? 'T-SPIN MINI' : 'T-SPIN';
+		} else if (allspinMini) {
+			spinText = `${piece}-SPIN MINI`;
+		}
+
 		if (board[board.length - 1].filter((c) => c.t == 0).length == boardSize[0]) pc = true;
 
 		if (cleared == 0) 
@@ -1050,9 +2049,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			oldcombo = combo;
 		}
 
+		b2bEligible = cleared > 0 && (tspin || mini || cleared == 4);
+
 		if (cleared > 0) 
         {
-			if (tspin || cleared == 4) 
+			if (b2bEligible) 
             {
                 b2b += 1;
                 oldb2b = b2b;
@@ -1060,22 +2061,22 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			else
             {
                 console.log("no b2b");
-                b2b = -1;
+				b2b = 0;
             }
 		}
 
 		text = '';
 		if (combo > 0) text += combo.toString() + '_COMBO\n';
-		if (b2b > 0 && (tspin || cleared == 4)) text += 'B2B ';
-		if (mini) text += 'MINI ';
-		if (tspin) text += 'T-SPIN ';
+		if (b2b > 0 && b2bEligible) text += 'B2B ';
+		if (spinText) text += `${spinText} `;
 		if (cleared > 4) cleared = 4; // nani
 		if (cleared > 0) text += ['NULL', 'SINGLE', 'DOUBLE', 'TRIPLE', 'QUAD'][cleared];
 		if (pc) text += '\nPERFECT\nCLEAR!';
-        if (b2b > 0 && (tspin || cleared == 4)) text += ' x' + b2b.toString();
+		if (b2b > 0 && b2bEligible) text += ' x' + b2b.toString();
 		if (text != '') notify(text);
-		if (tspin || cleared == 4) playSnd('ClearTetra', true);
+		if (b2bEligible) playSnd('ClearTetra', true);
 		if (pc) playSnd('PerfectClear', 1);
+		syncEvalChainInputsFromGame();
 
         return cleared;
 
@@ -1096,9 +2097,17 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	function render() {
 		checkShift();
 
+		if (evalState.enabled) {
+			const now = Date.now();
+			if (!evalState.inFlight && now - evalState.lastRequestAt > 500) {
+				analyzeWithEngine(false);
+			}
+		}
+
 		ctx.clearRect(0, 0, boardSize[0] * cellSize, boardSize[1] * cellSize);
 		ctx.fillStyle = pattern;
 		ctx.fillRect(0, 0, boardSize[0] * cellSize, boardSize[1] * cellSize);
+		drawEvaluationOverlay();
 
 		board.map((y, i) => {
 			y.map((x, ii) => {
