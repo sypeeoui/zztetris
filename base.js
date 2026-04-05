@@ -2058,7 +2058,12 @@ function callback(gravity=700, special_restart=false, cheese=false) {
                 b2b += 1;
                 oldb2b = b2b;
             }
-			else
+			else if (pc)
+			{
+				b2b += 1;
+				oldb2b = b2b;
+			}
+			else if (!pc)
             {
                 console.log("no b2b");
 				b2b = 0;
