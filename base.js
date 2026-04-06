@@ -18,6 +18,8 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 function aboutPopup() {
 	window.alert(`START BY ADJUSTING KEYBINDS AND SETTINGS
+Made by sypeeoui and forked from zztetris to add analizer features with fusion (mochbot engine).
+---
 zztetris
 a tetris client with a name that starts with zz so you can type zz and have it autocomplete
 forked from aznguy's schoolteto, a number of features added
@@ -193,7 +195,7 @@ const notf = $('#notif');
 
 const names = 'ZLOSIJT'.split(''); // piece names
 
-const spawn = [Math.round(boardSize[0] / 2) - 2, hiddenRows - 3];
+const spawn = [4, hiddenRows - 2];
 const a = { t: 0, c: '' }; // t:0 = nothing   t:1 = heap mino   t:2 = current mino   t:3 = ghost mino
 //? ^^ ??? - g3ner1c
 
@@ -254,6 +256,15 @@ const charToEnginePiece = {
 	Z: 4,
 	J: 5,
 	L: 6,
+};
+const engineToFrontendOffset = {
+	I: { x: -1, y: -1 },
+	O: { x: -1, y: -1 },
+	T: { x: -1, y: -2 },
+	S: { x: -1, y: -2 },
+	Z: { x: -1, y: -2 },
+	J: { x: -1, y: -2 },
+	L: { x: -1, y: -2 },
 };
 const pieceBaseCoords = {
 	I: [
@@ -990,13 +1001,13 @@ function engineInputName(code) {
 		case 0:
 			return 'NoInput';
 		case 1:
-			return 'ShiftLeft';
-		case 2:
 			return 'ShiftRight';
+		case 2:
+			return 'ShiftLeft';
 		case 3:
-			return 'DasLeft';
-		case 4:
 			return 'DasRight';
+		case 4:
+			return 'DasLeft';
 		case 5:
 			return 'RotateCw';
 		case 6:
@@ -1050,7 +1061,7 @@ async function getInputCountForMove(apiBase, rows, moveObj, force) {
 		body: JSON.stringify({
 			board_rows: rows,
 			mv: moveToInputRequest(moveObj),
-			use_finesse: false,
+			use_finesse: true,
 			force,
 		}),
 	});
@@ -1071,7 +1082,7 @@ async function getInputSequenceForMove(apiBase, rows, moveObj, force) {
 		body: JSON.stringify({
 			board_rows: rows,
 			mv: moveToInputRequest(moveObj),
-			use_finesse: false,
+			use_finesse: true,
 			force,
 		}),
 	});
@@ -1079,6 +1090,173 @@ async function getInputSequenceForMove(apiBase, rows, moveObj, force) {
 	if (!res.ok) return [];
 	const data = await res.json();
 	return Array.isArray(data.inputs) ? data.inputs : [];
+}
+
+async function isMoveInEngineMovegen(apiBase, rows, pieceId, moveObj) {
+	if (pieceId === undefined || pieceId === null || !moveObj) return null;
+
+	try {
+		const res = await fetch(`${apiBase}/v1/get_all_moves`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify({
+				board_rows: rows,
+				current_piece: pieceId,
+			}),
+		});
+
+		if (!res.ok) return null;
+		const data = await res.json();
+		const moves = Array.isArray(data?.moves) ? data.moves : [];
+		return moves.some(
+			(m) =>
+				m?.piece == moveObj.piece &&
+				m?.rotation == moveObj.rotation &&
+				m?.x == moveObj.x &&
+				m?.y == moveObj.y &&
+				m?.spin == moveObj.spin
+		);
+	} catch (error) {
+		return null;
+	}
+}
+
+function buildSimBoardFromEngineRows(rows) {
+	const occ = Array.from({ length: 40 }, () => Array(10).fill(false));
+	for (let y = 0; y < 40; y++) {
+		const rowMask = rows[y] || 0;
+		for (let x = 0; x < 10; x++) {
+			if (rowMask & (1 << x)) occ[y][x] = true;
+		}
+	}
+	return occ;
+}
+
+function simCanMove(occ, pieceChar, rot, x, y) {
+	const base = pieceBaseCoords[pieceChar];
+	if (!base) return false;
+
+	for (const [dx, dy] of base) {
+		const r = rotateCoordForEngine(rot, dx, dy);
+		const bx = x + r.x;
+		const by = y + r.y;
+		if (bx < 0 || bx >= 10 || by < 0 || by >= 40) return false;
+		if (occ[by][bx]) return false;
+	}
+
+	return true;
+}
+
+function simRotateState(occ, state, pieceChar, dir) {
+	const nextRot = (state.rot + rotDir[dir]) % 4;
+	const key = `${pieceChar == 'I' ? 'I' : 'N'}${state.rot}-${nextRot}`;
+	const kickList = kicks[key] || [];
+
+	for (const kick of kickList) {
+		const nx = state.x + kick[0];
+		const ny = state.y + kick[1];
+		if (simCanMove(occ, pieceChar, nextRot, nx, ny)) {
+			state.x = nx;
+			state.y = ny;
+			state.rot = nextRot;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function simCurrentCellsEngine(state, pieceChar) {
+	const base = pieceBaseCoords[pieceChar];
+	if (!base) return [];
+
+	const out = [];
+	for (const [dx, dy] of base) {
+		const r = rotateCoordForEngine(state.rot, dx, dy);
+		const bx = state.x + r.x;
+		const by = state.y + r.y;
+		if (bx < 0 || bx >= 10 || by < 0 || by >= 40) continue;
+		out.push({ x: bx, y: by, piece: pieceChar });
+	}
+	return out;
+}
+
+function sameCellSet(a, b) {
+	if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+	const key = (c) => `${c.x},${c.y}`;
+	const setA = new Set(a.map(key));
+	for (const c of b) {
+		if (!setA.has(key(c))) return false;
+	}
+	return true;
+}
+
+function simulateLocalInputSequence(rows, moveObj, inputs) {
+	const pieceChar = enginePieceToChar[moveObj?.piece];
+	if (!pieceChar || !Array.isArray(inputs)) {
+		return { ok: false, reason: 'invalid move or inputs', match: false };
+	}
+
+	const occ = buildSimBoardFromEngineRows(rows);
+	const state = {
+		x: 4,
+		y: 21,
+		rot: 0,
+	};
+
+	if (!simCanMove(occ, pieceChar, state.rot, state.x, state.y)) {
+		return { ok: false, reason: 'spawn blocked in local simulator', match: false };
+	}
+
+	for (const code of inputs) {
+		switch (code) {
+			case 0:
+				break;
+			case 1:
+				if (simCanMove(occ, pieceChar, state.rot, state.x - 1, state.y)) state.x--;
+				break;
+			case 2:
+				if (simCanMove(occ, pieceChar, state.rot, state.x + 1, state.y)) state.x++;
+				break;
+			case 3:
+				while (simCanMove(occ, pieceChar, state.rot, state.x - 1, state.y)) state.x--;
+				break;
+			case 4:
+				while (simCanMove(occ, pieceChar, state.rot, state.x + 1, state.y)) state.x++;
+				break;
+			case 5:
+				simRotateState(occ, state, pieceChar, 'CW');
+				break;
+			case 6:
+				simRotateState(occ, state, pieceChar, 'CCW');
+				break;
+			case 7:
+				simRotateState(occ, state, pieceChar, 'R180');
+				break;
+			case 8:
+				if (simCanMove(occ, pieceChar, state.rot, state.x, state.y - 1)) state.y--;
+				break;
+			case 9:
+				while (simCanMove(occ, pieceChar, state.rot, state.x, state.y - 1)) state.y--;
+				break;
+			default:
+				return { ok: false, reason: `unknown input code ${code}`, match: false };
+		}
+	}
+
+	const targetCells = getMoveCells(moveObj);
+	const finalCells = simCurrentCellsEngine(state, pieceChar);
+	const match = sameCellSet(targetCells, finalCells);
+
+	return {
+		ok: true,
+		match,
+		final_state: { x: state.x, y: state.y, rotation: state.rot },
+		final_cells: finalCells,
+		target_cells: targetCells,
+	};
 }
 
 function reachabilityMoveVariants(moveObj) {
@@ -1122,17 +1300,20 @@ function applyEngineInputCode(code) {
 	if (!evalControlApi) return false;
 
 	switch (code) {
-		case 1:
-			evalControlApi.moveLeft();
+		case 0:
+			// NoInput: explicit no-op to keep mapping total.
 			return true;
-		case 2:
+		case 1:
 			evalControlApi.moveRight();
 			return true;
+		case 2:
+			evalControlApi.moveLeft();
+			return true;
 		case 3:
-				evalControlApi.moveLeft();
+			evalControlApi.dasRight();
 			return true;
 		case 4:
-				evalControlApi.moveRight();
+			evalControlApi.dasLeft();
 			return true;
 		case 5:
 			evalControlApi.rotateCw();
@@ -1176,30 +1357,93 @@ async function playRoute(route) {
 	evalState.playbackInFlight = true;
 	setEvalStatus(`Playing route at ${ips.toFixed(1)} input/s...`);
 
+	const moveObj = route.moves[0];
+
+	// Reset piece to spawn position and type before playback
+	piece = enginePieceToChar[moveObj.piece] || piece;
+	const offset = engineToFrontendOffset[piece] || { x: 0, y: 0 };
+
+	// Reset to engine spawn position (4, 21) mapped to frontend coords
+	xPOS = 4 + offset.x;
+	yPOS = (boardSize[1] - 1 - 21) + offset.y; // Engine y=21 is spawn_row
+	rot = 0;
+	clearActive();
+	updateGhost();
+	setShape();
+
 	try {
 		if (route.hold_used && evalControlApi.hold) {
 			evalControlApi.hold();
 			await sleepMs(stepDelayMs);
 		}
 
-		const moveObj = route.moves[0];
 		const rows = boardRowsForEngine();
 		let inputs = await getInputSequenceForMove(apiBase, rows, moveObj, false);
-		if (!inputs.length) {
-			inputs = await getInputSequenceForMove(apiBase, rows, moveObj, true);
-		}
 
 		if (!inputs.length) {
 			setEvalStatus('Playback stopped: no input sequence for selected move.', true);
 			return;
 		}
 
-		for (const code of inputs) {
+		// Optimized input playback: group repeated inputs to execute them faster.
+		// "The repeated command (shift, rotation) should executed faster as one single input time."
+		// "The SDR when executing the softdrop should be a non zero value."
+		const SDR_DELAY_MS = 10; // Fast SDR for softdrop playback
+
+		let lastX = xPOS, lastY = yPOS, lastRot = rot;
+
+		for (let i = 0; i < inputs.length; i++) {
+			const code = inputs[i];
+			const nextCode = i < inputs.length - 1 ? inputs[i + 1] : null;
+
+			if (code === 9) {
+				// Hard drop is about to happen, capture the position it will land at
+				lastX = xPOS;
+				lastY = yGHO; // Hard drop lands at ghost
+				lastRot = rot;
+			}
+
 			applyEngineInputCode(code);
-			await sleepMs(stepDelayMs);
+
+			if (code !== 9) {
+				// Capture current position for normal moves
+				lastX = xPOS;
+				lastY = yPOS;
+				lastRot = rot;
+			}
+
+			// If next command is the same, and it's a "repeatable" command, don't wait or wait less.
+			// Repeatable: ShiftLeft(1), ShiftRight(2), DasLeft(3), DasRight(4), RotateCw(5), RotateCcw(6), RotateFlip(7), SoftDrop(8)
+			const isRepeatable = code >= 1 && code <= 8;
+			const isSoftDrop = code === 8;
+
+			if (nextCode === code && isRepeatable) {
+				if (isSoftDrop) {
+					await sleepMs(SDR_DELAY_MS);
+				} else {
+					// Execute identical shifts/rotations immediately (same frame)
+					continue;
+				}
+			} else {
+				await sleepMs(stepDelayMs);
+			}
 		}
 
-		setEvalStatus('Move playback complete.');
+		// Debug validation: check if final position matches target move
+		const finalX = lastX - offset.x;
+		const finalY = boardSize[1] - 1 - (lastY - offset.y);
+		const finalRot = lastRot;
+
+		if (finalX !== moveObj.x || finalY !== moveObj.y || finalRot !== moveObj.rotation) {
+			console.error('Playback Position Mismatch!', {
+				target: { x: moveObj.x, y: moveObj.y, rotation: moveObj.rotation },
+				actual: { x: finalX, y: finalY, rotation: finalRot },
+				inputs: inputs
+			});
+			setEvalStatus('Playback mismatch detected (see console).', true);
+		} else {
+			setEvalStatus('Move playback complete.');
+		}
 	} catch (error) {
 		setEvalStatus(`Playback failed: ${error.message}`, true);
 	} finally {
@@ -1229,11 +1473,6 @@ async function isMoveReachable(apiBase, rows, moveObj, mode) {
 	for (const variant of variants) {
 		const strictCount = await getInputCountForMove(apiBase, rows, variant, false);
 		if (strictCount > 0) return true;
-	}
-
-	for (const variant of variants) {
-		const forcedCount = await getInputCountForMove(apiBase, rows, variant, true);
-		if (forcedCount > 0) return true;
 	}
 
 	return false;
@@ -1484,7 +1723,14 @@ async function analyzeWithEngine(forceRefresh = false) {
 
 		const data = await res.json();
 		const rawRoutes = buildEvaluationRoutes(data);
-		const filtered = await filterRoutesByReachability(apiBase, rows, rawRoutes, evalState.reachabilityMode);
+		const holdId = holdP ? charToEnginePiece[holdP] : null;
+		const queueIds = queueForEngine();
+		const nextQueuePieceId = queueIds.length ? queueIds[0] : null;
+		const contextRoutes = rawRoutes.filter((route) => {
+			const check = validateRoutePieceContext(route, pieceId, holdId, nextQueuePieceId);
+			return check.ok;
+		});
+		const filtered = await filterRoutesByReachability(apiBase, rows, contextRoutes, evalState.reachabilityMode);
 		const finalRoutes = filtered.routes;
 
 		evalState.latestData = {
@@ -1569,10 +1815,16 @@ async function probeRouteMoveReachability(apiBase, rows, moveObj) {
 			strict_inputs: strictInputs,
 			strict_input_names: strictInputs.map((code) => engineInputName(code)),
 			strict_input_heuristics: analyzeInputSequenceHeuristics(strictInputs),
+			strict_local_simulation: strictInputs.length
+				? simulateLocalInputSequence(rows, variant, strictInputs)
+				: null,
 			forced_count: forcedCount,
 			forced_inputs: forcedInputs,
 			forced_input_names: forcedInputs.map((code) => engineInputName(code)),
 			forced_input_heuristics: analyzeInputSequenceHeuristics(forcedInputs),
+			forced_local_simulation: forcedInputs.length
+				? simulateLocalInputSequence(rows, variant, forcedInputs)
+				: null,
 		});
 	}
 
@@ -1582,7 +1834,7 @@ async function probeRouteMoveReachability(apiBase, rows, moveObj) {
 	};
 }
 
-function validateRoutePieceContext(route, currentPieceId, holdPieceId) {
+function validateRoutePieceContext(route, currentPieceId, holdPieceId, nextQueuePieceId) {
 	const firstMove = route?.moves?.[0] || null;
 	if (!firstMove) {
 		return {
@@ -1592,25 +1844,53 @@ function validateRoutePieceContext(route, currentPieceId, holdPieceId) {
 	}
 
 	if (route.hold_used) {
-		if (holdPieceId === null || holdPieceId === undefined) {
+		if (holdPieceId !== null && holdPieceId !== undefined) {
+			if (firstMove.piece !== holdPieceId) {
+				return {
+					ok: false,
+					reason: `route marked hold_used, but move piece ${firstMove.piece} != hold piece ${holdPieceId}`,
+				};
+			}
 			return {
-				ok: false,
-				reason: 'route requires hold, but hold piece is empty',
+				ok: true,
+				reason: 'hold route piece matches hold piece',
 			};
 		}
-		if (firstMove.piece !== holdPieceId) {
+
+		// Empty hold: first hold consumes current and plays queue[0].
+		if (nextQueuePieceId === null || nextQueuePieceId === undefined) {
 			return {
 				ok: false,
-				reason: `route marked hold_used, but move piece ${firstMove.piece} != hold piece ${holdPieceId}`,
+				reason: 'route requires hold from empty hold, but queue is empty',
+			};
+		}
+		if (firstMove.piece !== nextQueuePieceId) {
+			return {
+				ok: false,
+				reason: `route marked hold_used from empty hold, but move piece ${firstMove.piece} != queue[0] ${nextQueuePieceId}`,
 			};
 		}
 		return {
 			ok: true,
-			reason: 'hold route piece matches hold piece',
+			reason: 'hold route piece matches queue[0] for empty-hold swap',
 		};
 	}
 
+	// Candidates may occasionally miss hold_used metadata; infer when possible.
 	if (firstMove.piece !== currentPieceId) {
+		if (holdPieceId !== null && holdPieceId !== undefined && firstMove.piece == holdPieceId) {
+			return {
+				ok: true,
+				reason: 'inferred hold route: move piece matches hold piece',
+			};
+		}
+		if ((holdPieceId === null || holdPieceId === undefined) && nextQueuePieceId !== null && nextQueuePieceId !== undefined && firstMove.piece == nextQueuePieceId) {
+			return {
+				ok: true,
+				reason: 'inferred empty-hold swap route: move piece matches queue[0]',
+			};
+		}
+
 		return {
 			ok: false,
 			reason: `route uses current piece path, but move piece ${firstMove.piece} != current piece ${currentPieceId}`,
@@ -1680,12 +1960,15 @@ window.evalDebugDump = async function evalDebugDump(options = {}) {
 	for (const route of rawRoutes) {
 		const firstMove = route.moves?.[0] || null;
 		const probe = await probeRouteMoveReachability(apiBase, rows, firstMove);
-		const contextCheck = validateRoutePieceContext(route, pieceId, holdId);
+		const movegenContains = await isMoveInEngineMovegen(apiBase, rows, pieceId, firstMove);
+		const nextQueuePieceId = queueIds.length ? queueIds[0] : null;
+		const contextCheck = validateRoutePieceContext(route, pieceId, holdId, nextQueuePieceId);
 		routeProbes.push({
 			key: route.key,
 			label: route.label,
 			score: route.score,
 			first_move: firstMove,
+			engine_movegen_contains_first_move: movegenContains,
 			piece_context_check: contextCheck,
 			reachability_probe: probe,
 		});
@@ -1694,8 +1977,12 @@ window.evalDebugDump = async function evalDebugDump(options = {}) {
 	const selectedRoute = evalState.latestData?.routes?.find((r) => r.key == evalState.selectedRouteKey) || null;
 	const selectedMove = selectedRoute?.moves?.[0] || null;
 	const selectedMoveProbe = await probeRouteMoveReachability(apiBase, rows, selectedMove);
+	const selectedMoveInMovegen = await isMoveInEngineMovegen(apiBase, rows, pieceId, selectedMove);
 	const customMoveProbe = options.probeMove
 		? await probeRouteMoveReachability(apiBase, rows, options.probeMove)
+		: null;
+	const customMoveInMovegen = options.probeMove
+		? await isMoveInEngineMovegen(apiBase, rows, pieceId, options.probeMove)
 		: null;
 
 	const dump = {
@@ -1729,10 +2016,12 @@ window.evalDebugDump = async function evalDebugDump(options = {}) {
 		latest_data: evalState.latestData,
 		selected_route_probe: {
 			route: selectedRoute,
+			engine_movegen_contains_first_move: selectedMoveInMovegen,
 			probe: selectedMoveProbe,
 		},
 		custom_move_probe: {
 			move: options.probeMove || null,
+			engine_movegen_contains_move: customMoveInMovegen,
 			probe: customMoveProbe,
 		},
 	};

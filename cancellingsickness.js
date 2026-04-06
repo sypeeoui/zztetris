@@ -193,7 +193,7 @@ const notf = $('#notif');
 
 const names = 'ZLOSIJT'.split(''); // piece names
 
-const spawn = [Math.round(boardSize[0] / 2) - 2, hiddenRows - 3];
+const spawn = [4, hiddenRows - 2];
 const a = { t: 0, c: '' }; // t:0 = nothing   t:1 = heap mino   t:2 = current mino   t:3 = ghost mino
 //? ^^ ??? - g3ner1c
 
