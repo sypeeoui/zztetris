@@ -312,7 +312,7 @@ var evalState = {
 	selectedRouteKey: 'best_pv',
 	routeFollowMode: 'pv',
 	hoverRouteKey: '',
-	reachabilityMode: 'relaxed',
+	reachabilityMode: 'strict',
 	playbackInputsPerSecond: 2,
 	latestData: null,
 	overlayCells: [],
@@ -985,6 +985,62 @@ function moveToInputRequest(moveObj) {
 	};
 }
 
+function engineInputName(code) {
+	switch (code) {
+		case 0:
+			return 'NoInput';
+		case 1:
+			return 'ShiftLeft';
+		case 2:
+			return 'ShiftRight';
+		case 3:
+			return 'DasLeft';
+		case 4:
+			return 'DasRight';
+		case 5:
+			return 'RotateCw';
+		case 6:
+			return 'RotateCcw';
+		case 7:
+			return 'RotateFlip';
+		case 8:
+			return 'SoftDrop';
+		case 9:
+			return 'HardDrop';
+		default:
+			return `Unknown(${code})`;
+	}
+}
+
+function analyzeInputSequenceHeuristics(inputs) {
+	const arr = Array.isArray(inputs) ? inputs : [];
+	const rotationCodes = new Set([5, 6, 7]);
+	const shiftCodes = new Set([1, 2, 3, 4]);
+	const softDropCode = 8;
+
+	let rotationCount = 0;
+	let shiftCount = 0;
+	let softDropCount = 0;
+
+	for (const code of arr) {
+		if (rotationCodes.has(code)) rotationCount++;
+		if (shiftCodes.has(code)) shiftCount++;
+		if (code == softDropCode) softDropCount++;
+	}
+
+	const suspiciousNoShiftRotationHeavy = shiftCount == 0 && rotationCount >= 4;
+	const suspiciousSoftDropThenRotationSpam = softDropCount >= 2 && rotationCount >= 5;
+
+	return {
+		length: arr.length,
+		rotation_count: rotationCount,
+		shift_count: shiftCount,
+		softdrop_count: softDropCount,
+		suspicious_no_shift_rotation_heavy: suspiciousNoShiftRotationHeavy,
+		suspicious_softdrop_then_rotation_spam: suspiciousSoftDropThenRotationSpam,
+	};
+}
+
 async function getInputCountForMove(apiBase, rows, moveObj, force) {
 	const res = await fetch(`${apiBase}/v1/get_input_sequence`, {
 		method: 'POST',
@@ -1206,10 +1262,6 @@ async function filterRoutesByReachability(apiBase, rows, routes, mode) {
 		})
 		.map((entry) => entry.route);
 
-	if (mode == 'relaxed' && !filtered.length && routes.length) {
-		return { routes, failedChecks, relaxed: true };
-	}
-
 	return { routes: filtered, failedChecks, relaxed: false };
 }
 
@@ -1348,7 +1400,8 @@ function updateEvaluationText() {
 			return `${p}@x${m.x},y${m.y},r${m.rotation}`;
 		})
 		.join(' -> ');
-	pvEl.textContent = pvSummary ? `Route: ${pvSummary}` : '';
+	const holdPrefix = selectedRoute.hold_used ? '[HOLD] ' : '';
+	pvEl.textContent = pvSummary ? `Route: ${holdPrefix}${pvSummary}` : '';
 }
 
 function rebuildEvaluationOverlay() {
@@ -1473,6 +1526,225 @@ async function analyzeWithEngine(forceRefresh = false) {
 	}
 }
 
+async function probeRouteMoveReachability(apiBase, rows, moveObj) {
+	if (!moveObj) {
+		return {
+			ok: false,
+			error: 'missing move object',
+			variants: [],
+		};
+	}
+
+	const variants = reachabilityMoveVariants(moveObj);
+	const checks = [];
+
+	for (const variant of variants) {
+		let strictCount = -1;
+		let forcedCount = -1;
+		let strictInputs = [];
+		let forcedInputs = [];
+
+		try {
+			strictCount = await getInputCountForMove(apiBase, rows, variant, false);
+			if (strictCount > 0) {
+				strictInputs = await getInputSequenceForMove(apiBase, rows, variant, false);
+			}
+		} catch (error) {
+			strictCount = -1;
+		}
+
+		try {
+			forcedCount = await getInputCountForMove(apiBase, rows, variant, true);
+			if (forcedCount > 0) {
+				forcedInputs = await getInputSequenceForMove(apiBase, rows, variant, true);
+			}
+		} catch (error) {
+			forcedCount = -1;
+		}
+
+		checks.push({
+			move: variant,
+			cells: getMoveCells(variant),
+			strict_count: strictCount,
+			strict_inputs: strictInputs,
+			strict_input_names: strictInputs.map((code) => engineInputName(code)),
+			strict_input_heuristics: analyzeInputSequenceHeuristics(strictInputs),
+			forced_count: forcedCount,
+			forced_inputs: forcedInputs,
+			forced_input_names: forcedInputs.map((code) => engineInputName(code)),
+			forced_input_heuristics: analyzeInputSequenceHeuristics(forcedInputs),
+		});
+	}
+
+	return {
+		ok: true,
+		variants: checks,
+	};
+}
+
+function validateRoutePieceContext(route, currentPieceId, holdPieceId) {
+	const firstMove = route?.moves?.[0] || null;
+	if (!firstMove) {
+		return {
+			ok: false,
+			reason: 'missing first move',
+		};
+	}
+
+	if (route.hold_used) {
+		if (holdPieceId === null || holdPieceId === undefined) {
+			return {
+				ok: false,
+				reason: 'route requires hold, but hold piece is empty',
+			};
+		}
+		if (firstMove.piece !== holdPieceId) {
+			return {
+				ok: false,
+				reason: `route marked hold_used, but move piece ${firstMove.piece} != hold piece ${holdPieceId}`,
+			};
+		}
+		return {
+			ok: true,
+			reason: 'hold route piece matches hold piece',
+		};
+	}
+
+	if (firstMove.piece !== currentPieceId) {
+		return {
+			ok: false,
+			reason: `route uses current piece path, but move piece ${firstMove.piece} != current piece ${currentPieceId}`,
+		};
+	}
+
+	return {
+		ok: true,
+		reason: 'non-hold route piece matches current piece',
+	};
+}
+
+window.evalDebugDump = async function evalDebugDump(options = {}) {
+	const runFreshAnalyze = options.runFreshAnalyze !== false;
+	if (runFreshAnalyze) {
+		try {
+			await analyzeWithEngine(true);
+		} catch (error) {
+			// Continue and include failure details in dump.
+		}
+	}
+
+	const apiBaseInput = getEvalElement('evalApiBase');
+	const apiBase = normalizeEvalApiBase(apiBaseInput?.value || getDefaultEvalApiBase());
+	const rows = boardRowsForEngine();
+	const pieceId = charToEnginePiece[piece];
+	const queueIds = queueForEngine();
+	const holdId = holdP ? charToEnginePiece[holdP] : null;
+	const sentB2b = currentB2BForEngine();
+	const sentCombo = currentComboForEngine();
+	const sentPending = Math.floor(readNumberInput('evalPendingGarbage', 0, 0));
+
+	const payload = {
+		board_rows: rows,
+		current_piece: pieceId,
+		queue: queueIds,
+		hold: holdId,
+		b2b: sentB2b,
+		combo: sentCombo,
+		pending_garbage: sentPending,
+		include_candidates: true,
+		candidate_limit: 8,
+		candidate_temperature: 1.0,
+		search: getSearchOverridesFromUi(),
+	};
+
+	let findBestMoveStatus = null;
+	let findBestMoveBody = null;
+	let findBestMoveError = null;
+
+	try {
+		const res = await fetch(`${apiBase}/v1/find_best_move`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify(payload),
+		});
+		findBestMoveStatus = res.status;
+		findBestMoveBody = await res.json();
+	} catch (error) {
+		findBestMoveError = String(error?.message || error);
+	}
+
+	const rawRoutes = findBestMoveBody ? buildEvaluationRoutes(findBestMoveBody) : [];
+	const routeProbes = [];
+	for (const route of rawRoutes) {
+		const firstMove = route.moves?.[0] || null;
+		const probe = await probeRouteMoveReachability(apiBase, rows, firstMove);
+		const contextCheck = validateRoutePieceContext(route, pieceId, holdId);
+		routeProbes.push({
+			key: route.key,
+			label: route.label,
+			score: route.score,
+			first_move: firstMove,
+			piece_context_check: contextCheck,
+			reachability_probe: probe,
+		});
+	}
+
+	const selectedRoute = evalState.latestData?.routes?.find((r) => r.key == evalState.selectedRouteKey) || null;
+	const selectedMove = selectedRoute?.moves?.[0] || null;
+	const selectedMoveProbe = await probeRouteMoveReachability(apiBase, rows, selectedMove);
+	const customMoveProbe = options.probeMove
+		? await probeRouteMoveReachability(apiBase, rows, options.probeMove)
+		: null;
+
+	const dump = {
+		timestamp: new Date().toISOString(),
+		url: window.location?.href || '',
+		api_base: apiBase,
+		reachability_mode: evalState.reachabilityMode,
+		selected_route_key: evalState.selectedRouteKey,
+		hover_route_key: evalState.hoverRouteKey,
+		state_hash: getEvaluationStateHash(),
+		state: {
+			piece_char: piece,
+			piece_id: pieceId,
+			hold_char: holdP || null,
+			hold_id: holdId,
+			queue_chars: queue.filter((p) => p != '|'),
+			queue_ids: queueIds,
+			b2b: sentB2b,
+			combo: sentCombo,
+			pending_garbage: sentPending,
+			board_rows: rows,
+		},
+		request_payload: payload,
+		find_best_move: {
+			status: findBestMoveStatus,
+			error: findBestMoveError,
+			body: findBestMoveBody,
+		},
+		raw_routes: rawRoutes,
+		route_probes: routeProbes,
+		latest_data: evalState.latestData,
+		selected_route_probe: {
+			route: selectedRoute,
+			probe: selectedMoveProbe,
+		},
+		custom_move_probe: {
+			move: options.probeMove || null,
+			probe: customMoveProbe,
+		},
+	};
+
+	console.groupCollapsed('[evalDebugDump] Engine snapshot');
+	console.log(dump);
+	console.log('[evalDebugDump] Copy JSON:', JSON.stringify(dump));
+	console.groupEnd();
+
+	return dump;
+};
+
 function setEvaluationMode(enabled) {
 	evalState.enabled = enabled;
 	evalState.optionsHidden = enabled;
@@ -1511,7 +1783,7 @@ function initEvaluationUi() {
 	}
 
 	if (LS.evalReachabilityMode && ['strict', 'relaxed', 'off'].includes(LS.evalReachabilityMode)) {
-		evalState.reachabilityMode = LS.evalReachabilityMode;
+		evalState.reachabilityMode = LS.evalReachabilityMode == 'relaxed' ? 'strict' : LS.evalReachabilityMode;
 	}
 
 	if (LS.evalRouteFollowMode && ['pv', 'candidate1'].includes(LS.evalRouteFollowMode)) {
@@ -1537,7 +1809,7 @@ function initEvaluationUi() {
 	});
 
 	reachabilityBtn.addEventListener('click', () => {
-		const modes = ['strict', 'relaxed', 'off'];
+		const modes = ['strict', 'off'];
 		const idx = modes.indexOf(evalState.reachabilityMode);
 		evalState.reachabilityMode = modes[(idx + 1) % modes.length];
 		LS.evalReachabilityMode = evalState.reachabilityMode;
