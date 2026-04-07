@@ -1,0 +1,8 @@
+[submodule "engines/fusion"]
+	path = engines/fusion
+	url = git@github.com:sypeeoui/fusion.git
+	branch = devel
+[submodule "engines/falcon-2"]
+	path = engines/falcon-2
+	url = git@github.com:sypeeoui/falcon-2.git
+	branch = devel

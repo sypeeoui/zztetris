@@ -24,17 +24,50 @@ Inspired by fio's four-tris
 - *Full* fumen import/export sets your board state history as the fumen pages and vice versa.
 - Drawing garbage on the board
 
-## Engine API default URL config
+## Engines (WASM)
 
-Edit `engine.config.json` to set the default engine URL used by the Evaluation panel.
+ZZTetris uses high-performance Tetris engines compiled to WebAssembly. The engines are included as Git submodules in the `engines/` directory.
+
+### Building the Engines
+
+To build the WASM binaries, you need [Rust](https://rustup.rs/) and [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/).
+
+Run the build script from the `zztetris` directory:
+
+```bash
+./build_wasm.sh
+```
+
+### Running the Visualizer
+
+Because ZZTetris uses WebAssembly ES modules, it **cannot be opened directly as a file** (`file://`). You must use a local web server.
+
+Run the provided start script:
+
+```bash
+./start_web.sh
+```
+
+Then open [http://localhost:8080](http://localhost:8080) in your browser.
+
+### Development
+
+The submodules track the `devel` branch of their respective repositories. To pull the latest changes:
+
+```bash
+git submodule update --remote --recursive
+```
+
+## Engine API Configuration
+
+ZZTetris can also connect to remote engine services via HTTP. Edit `engine.config.json` to set the base URLs:
 
 ```json
 {
-  "engineApiBase": "http://localhost:8080"
+  "fusionApiBase": "http://127.0.0.1:8787",
+  "falconApiBase": "http://127.0.0.1:8888"
 }
 ```
-
-Accepted keys are `engineApiBase` (preferred), `defaultEngineUrl`, and `evalApiBase`.
 
 ## TODO
 

@@ -83,7 +83,11 @@
 							<option value="falcon">Falcon</option>
 						</select>
 					</div>
-					<div class="eval-row eval-row--stack">
+					<div class="eval-row">
+						<input type="checkbox" id="evalUseWasm" checked />
+						<label for="evalUseWasm">Use WASM</label>
+					</div>
+					<div id="apiBaseContainer" class="eval-row eval-row--stack" style="display: none;">
 						<label for="evalApiBase">Engine API</label>
 						<input id="evalApiBase" type="text" value="" />
 					</div>

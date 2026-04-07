@@ -333,6 +333,87 @@ var evalState = {
 	overlayCells: [],
 };
 var evalControlApi = null;
+
+const wasmHelper = {
+	fusion: { module: null, ready: false },
+	falcon: { module: null, ready: false },
+
+	getBaseUrl() {
+		return window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/';
+	},
+
+	async initFusion() {
+		if (this.fusion.ready) return;
+		try {
+			const url = this.getBaseUrl() + 'wasm/direct_cobra_copy.js';
+			const mod = await import(url);
+			await mod.default();
+			mod.init();
+			this.fusion.module = mod;
+			this.fusion.ready = true;
+		} catch (e) {
+			console.error('Failed to init Fusion WASM:', e);
+			throw e;
+		}
+	},
+
+	async initFalcon() {
+		if (this.falcon.ready) return;
+		try {
+			const url = this.getBaseUrl() + 'wasm/falcon_2.js';
+			const mod = await import(url);
+			await mod.default();
+			mod.init_panic_hook();
+			this.falcon.module = mod;
+			this.falcon.ready = true;
+		} catch (e) {
+			console.error('Failed to init Falcon WASM:', e);
+			throw e;
+		}
+	},
+
+	async findBestMoveFusion(rows, pieceId, queue, holdId, overrides) {
+		await this.initFusion();
+		const { JsBoard, find_best_move } = this.fusion.module;
+		const board = JsBoard.from_rows(new BigUint64Array(rows.map(BigInt)));
+		const frame = {
+			queue: queue,
+			hold: holdId,
+		};
+		const res = find_best_move(board, pieceId, frame);
+		if (!res) return null;
+		// Wrap in structure compatible with buildEvaluationRoutes
+		return {
+			best_move: res,
+			score: res.score,
+			hold_used: res.hold_used,
+			pv: [res]
+		};
+	},
+
+	async findBestMoveFalcon(rows, pieceId, queue, holdId, overrides) {
+		await this.initFalcon();
+		const { find_best_move } = this.falcon.module;
+		
+		const b2b = typeof overrides?.b2b === 'number' ? overrides.b2b : -1;
+		const combo = typeof overrides?.combo === 'number' ? overrides.combo : -1;
+		const depth = overrides?.depth || 10;
+		const beam_width = overrides?.beam_width || 2000;
+		const weights = overrides?.weights || null;
+
+		return find_best_move(
+			new BigUint64Array(rows.map(BigInt)),
+			pieceId,
+			new Uint8Array(queue),
+			holdId === null ? undefined : holdId,
+			b2b,
+			combo,
+			depth,
+			beam_width,
+			weights
+		);
+	}
+};
 for (let i = 0; i < boardSize[1]; i++) {
 	board.push(aRow());
 }
@@ -1116,6 +1197,14 @@ async function getInputCountForMove(apiBase, rows, moveObj, force) {
 }
 
 async function getInputSequenceForMove(apiBase, rows, moveObj, force) {
+	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
+	if (useWasm) {
+		// WASM engine results usually have input_sequence attached to the route.
+		// If we are here, it means we don't have it.
+		// For Fusion WASM, we might need to expose pathfinder if it's critical.
+		return [];
+	}
+
 	const res = await fetch(`${apiBase}/v1/get_input_sequence`, {
 		method: 'POST',
 		headers: {
@@ -1137,21 +1226,38 @@ async function getInputSequenceForMove(apiBase, rows, moveObj, force) {
 async function isMoveInEngineMovegen(apiBase, rows, pieceId, moveObj) {
 	if (pieceId === undefined || pieceId === null || !moveObj) return null;
 
-	try {
-		const res = await fetch(`${apiBase}/v1/get_all_moves`, {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-			},
-			body: JSON.stringify({
-				board_rows: rows,
-				current_piece: pieceId,
-			}),
-		});
+	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
+	const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
 
-		if (!res.ok) return null;
-		const data = await res.json();
-		const moves = Array.isArray(data?.moves) ? data.moves : [];
+	try {
+		let moves = [];
+		if (useWasm) {
+			if (engineType === 'fusion' && wasmHelper.fusion.ready) {
+				const { JsBoard, get_all_moves } = wasmHelper.fusion.module;
+				const board = JsBoard.from_rows(new BigUint64Array(rows.map(BigInt)));
+				moves = get_all_moves(board, pieceId) || [];
+			} else if (engineType === 'falcon') {
+				// Falcon currently doesn't expose get_all_moves in WASM, 
+				// assume it's valid if found by search
+				return true;
+			}
+		} else {
+			const res = await fetch(`${apiBase}/v1/get_all_moves`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+				},
+				body: JSON.stringify({
+					board_rows: rows,
+					current_piece: pieceId,
+				}),
+			});
+
+			if (!res.ok) return null;
+			const data = await res.json();
+			moves = Array.isArray(data?.moves) ? data.moves : [];
+		}
+
 		return moves.some(
 			(m) =>
 				m?.piece == moveObj.piece &&
@@ -1535,7 +1641,8 @@ async function isMoveReachable(apiBase, rows, moveObj, mode) {
 
 async function filterRoutesByReachability(apiBase, rows, routes, mode) {
 	if (!routes.length) return { routes: [], failedChecks: 0, relaxed: false };
-	if (mode == 'off') return { routes, failedChecks: 0, relaxed: false };
+	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
+	if (mode == 'off' || useWasm) return { routes, failedChecks: 0, relaxed: false };
 
 	const checks = await Promise.all(
 		routes.map(async (route) => {
@@ -1715,13 +1822,14 @@ function rebuildEvaluationOverlay() {
 async function analyzeWithEngine(forceRefresh = false) {
 	if (evalState.inFlight) return;
 
+	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
 	const apiBaseInput = getEvalElement('evalApiBase');
 	const apiBase = normalizeEvalApiBase(apiBaseInput?.value || getDefaultEvalApiBase());
-	if (!apiBase) {
+	if (!apiBase && !useWasm) {
 		setEvalStatus('Engine API address is empty.', true);
 		return;
 	}
-	LS.evalApiBase = apiBase;
+	if (apiBase) LS.evalApiBase = apiBase;
 
 	const stateHash = getEvaluationStateHash();
 	if (!forceRefresh && stateHash == evalState.lastAppliedHash) {
@@ -1743,40 +1851,61 @@ async function analyzeWithEngine(forceRefresh = false) {
 		const sentB2b = currentB2BForEngine();
 		const sentCombo = currentComboForEngine();
 		const sentPending = Math.floor(readNumberInput('evalPendingGarbage', 0, 0));
-		const payload = {
-			board_rows: rows,
-			current_piece: pieceId,
-			queue: queueForEngine(),
-			hold: holdP ? charToEnginePiece[holdP] : null,
-			b2b: sentB2b,
-			combo: sentCombo,
-			pending_garbage: sentPending,
-			include_candidates: true,
-			candidate_limit: 8,
-			candidate_temperature: 1.0,
-			search: getSearchOverridesFromUi(),
-		};
+		const overrides = getSearchOverridesFromUi();
+		const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
+		const useWasm = !!getEvalElement('evalUseWasm')?.checked;
 
-		const res = await fetch(`${apiBase}/v1/find_best_move`, {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-			},
-			body: JSON.stringify(payload),
-		});
-
-		if (!res.ok) {
-			let msg = `HTTP ${res.status}`;
-			try {
-				const body = await res.json();
-				if (body?.error) msg = body.error;
-			} catch (error) {
-				// noop
+		let data;
+		if (useWasm) {
+			const holdId = holdP ? charToEnginePiece[holdP] : null;
+			const queueIds = queueForEngine();
+			if (engineType === 'falcon') {
+				data = await wasmHelper.findBestMoveFalcon(rows, pieceId, queueIds, holdId, {
+					...overrides,
+					b2b: sentB2b,
+					combo: sentCombo,
+				});
+			} else {
+				data = await wasmHelper.findBestMoveFusion(rows, pieceId, queueIds, holdId, overrides);
 			}
-			throw new Error(msg);
+			if (!data) throw new Error('WASM engine returned no result');
+		} else {
+			const payload = {
+				board_rows: rows,
+				current_piece: pieceId,
+				queue: queueForEngine(),
+				hold: holdP ? charToEnginePiece[holdP] : null,
+				b2b: sentB2b,
+				combo: sentCombo,
+				pending_garbage: sentPending,
+				include_candidates: true,
+				candidate_limit: 8,
+				candidate_temperature: 1.0,
+				search: overrides,
+			};
+
+			const res = await fetch(`${apiBase}/v1/find_best_move`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+				},
+				body: JSON.stringify(payload),
+			});
+
+			if (!res.ok) {
+				let msg = `HTTP ${res.status}`;
+				try {
+					const body = await res.json();
+					if (body?.error) msg = body.error;
+				} catch (error) {
+					// noop
+				}
+				throw new Error(msg);
+			}
+
+			data = await res.json();
 		}
 
-		const data = await res.json();
 		const rawRoutes = buildEvaluationRoutes(data);
 		const holdId = holdP ? charToEnginePiece[holdP] : null;
 		const queueIds = queueForEngine();
@@ -2117,6 +2246,19 @@ function initEvaluationUi() {
 	const fusionParamsContainer = getEvalElement('fusionParamsContainer');
 	const beamWidthInput = getEvalElement('evalBeamWidth');
 	const depthInput = getEvalElement('evalDepth');
+	const useWasmCheckbox = getEvalElement('evalUseWasm');
+	const apiBaseContainer = getEvalElement('apiBaseContainer');
+
+	if (useWasmCheckbox && apiBaseContainer) {
+		useWasmCheckbox.addEventListener('change', () => {
+			apiBaseContainer.style.display = useWasmCheckbox.checked ? 'none' : 'grid';
+			LS.evalUseWasm = useWasmCheckbox.checked ? '1' : '0';
+		});
+		if (LS.evalUseWasm === '0') {
+			useWasmCheckbox.checked = false;
+			apiBaseContainer.style.display = 'grid';
+		}
+	}
 
 	if (engineTypeSelect && falconWeightsContainer && fusionParamsContainer) {
 		engineTypeSelect.addEventListener('change', () => {

@@ -3,3 +3,12 @@ tetris-fumen
 .vscode
 
 .DS_Store
+
+# WASM build artifacts
+pkg/
+*.wasm
+wasm/
+
+# Engines source (handled by submodules, but we want to ignore their internal builds if any)
+engines/fusion/target
+engines/falcon-2/target
