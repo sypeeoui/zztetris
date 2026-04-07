@@ -24,4 +24,11 @@ cd ../..
 cp engines/falcon-2/pkg_wasm/falcon_2.js wasm/falcon_2.js
 cp engines/falcon-2/pkg_wasm/falcon_2_bg.wasm wasm/falcon_2_bg.wasm
 
+echo "Building Cold Clear 2 engine..."
+cd engines/cold-clear-2
+wasm-pack build --target web --out-dir pkg_wasm -- --no-default-features --features wasm
+cd ../..
+cp engines/cold-clear-2/pkg_wasm/cold_clear_2.js wasm/cold_clear_2.js
+cp engines/cold-clear-2/pkg_wasm/cold_clear_2_bg.wasm wasm/cold_clear_2_bg.wasm
+
 echo "WASM engines built successfully in zztetris/wasm/"

@@ -18,7 +18,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 function aboutPopup() {
 	window.alert(`START BY ADJUSTING KEYBINDS AND SETTINGS
-Made by sypeeoui and forked from zztetris to add analizer features with fusion (mochbot engine).
+Made by sypeeoui and forked from zztetris to add analizer features with different open source engines.
 ---
 zztetris
 a tetris client with a name that starts with zz so you can type zz and have it autocomplete
@@ -327,7 +327,7 @@ var evalState = {
 	selectedRouteKey: 'best_pv',
 	routeFollowMode: 'pv',
 	hoverRouteKey: '',
-	reachabilityMode: 'strict',
+	reachabilityMode: 'off',
 	playbackInputsPerSecond: 2,
 	latestData: null,
 	overlayCells: [],
@@ -335,83 +335,62 @@ var evalState = {
 var evalControlApi = null;
 
 const wasmHelper = {
-	fusion: { module: null, ready: false },
-	falcon: { module: null, ready: false },
+	worker: null,
+	initPromise: null,
+	pendingRequest: null,
 
 	getBaseUrl() {
 		return window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/';
 	},
 
-	async initFusion() {
-		if (this.fusion.ready) return;
-		try {
-			const url = this.getBaseUrl() + 'wasm/direct_cobra_copy.js';
-			const mod = await import(url);
-			await mod.default();
-			mod.init();
-			this.fusion.module = mod;
-			this.fusion.ready = true;
-		} catch (e) {
-			console.error('Failed to init Fusion WASM:', e);
-			throw e;
-		}
-	},
-
-	async initFalcon() {
-		if (this.falcon.ready) return;
-		try {
-			const url = this.getBaseUrl() + 'wasm/falcon_2.js';
-			const mod = await import(url);
-			await mod.default();
-			mod.init_panic_hook();
-			this.falcon.module = mod;
-			this.falcon.ready = true;
-		} catch (e) {
-			console.error('Failed to init Falcon WASM:', e);
-			throw e;
-		}
-	},
-
-	async findBestMoveFusion(rows, pieceId, queue, holdId, overrides) {
-		await this.initFusion();
-		const { JsBoard, find_best_move } = this.fusion.module;
-		const board = JsBoard.from_rows(new BigUint64Array(rows.map(BigInt)));
-		const frame = {
-			queue: queue,
-			hold: holdId,
-		};
-		const res = find_best_move(board, pieceId, frame);
-		if (!res) return null;
-		// Wrap in structure compatible with buildEvaluationRoutes
-		return {
-			best_move: res,
-			score: res.score,
-			hold_used: res.hold_used,
-			pv: [res]
+	async ensureWorker() {
+		if (this.worker) return;
+		this.worker = new Worker('./engineWorker.js');
+		this.worker.onmessage = (e) => {
+			if (e.data.type === 'result' || e.data.type === 'error') {
+				if (this.pendingRequest) {
+					if (e.data.type === 'error') this.pendingRequest.reject(new Error(e.data.error));
+					else this.pendingRequest.resolve(e.data.result);
+					this.pendingRequest = null;
+				}
+			}
 		};
 	},
 
-	async findBestMoveFalcon(rows, pieceId, queue, holdId, overrides) {
-		await this.initFalcon();
-		const { find_best_move } = this.falcon.module;
-		
-		const b2b = typeof overrides?.b2b === 'number' ? overrides.b2b : -1;
-		const combo = typeof overrides?.combo === 'number' ? overrides.combo : -1;
-		const depth = overrides?.depth || 10;
-		const beam_width = overrides?.beam_width || 2000;
-		const weights = overrides?.weights || null;
+	async initEngine(engineType) {
+		await this.ensureWorker();
+		return new Promise((resolve, reject) => {
+			const handler = (e) => {
+				if (e.data.type === 'init_ok' && e.data.engineType === engineType) {
+					this.worker.removeEventListener('message', handler);
+					resolve();
+				} else if (e.data.type === 'error') {
+					this.worker.removeEventListener('message', handler);
+					reject(new Error(e.data.error));
+				}
+			};
+			this.worker.addEventListener('message', handler);
+			this.worker.postMessage({
+				type: 'init',
+				engineType,
+				payload: { baseUrl: this.getBaseUrl() }
+			});
+		});
+	},
 
-		return find_best_move(
-			new BigUint64Array(rows.map(BigInt)),
-			pieceId,
-			new Uint8Array(queue),
-			holdId === null ? undefined : holdId,
-			b2b,
-			combo,
-			depth,
-			beam_width,
-			weights
-		);
+	async findBestMove(engineType, payload) {
+		await this.initEngine(engineType === 'cold-clear' ? 'coldClear' : engineType);
+		if (this.pendingRequest) {
+			this.pendingRequest.reject(new Error('Aborted by new request'));
+		}
+		return new Promise((resolve, reject) => {
+			this.pendingRequest = { resolve, reject };
+			this.worker.postMessage({
+				type: 'find_best_move',
+				engineType: engineType === 'cold-clear' ? 'coldClear' : engineType,
+				payload
+			});
+		});
 	}
 };
 for (let i = 0; i < boardSize[1]; i++) {
@@ -974,6 +953,11 @@ function readNumberInput(id, fallback, minValue = null) {
 
 function getSearchOverridesFromUi() {
 	const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
+	if (engineType === 'cold-clear') {
+		return {
+			nodes: Math.floor(readNumberInput('coldClearNodes', 500, 1)),
+		};
+	}
 	if (engineType === 'falcon') {
 		return {
 			depth: Math.floor(readNumberInput('evalDepth', 10, 1)),
@@ -1855,19 +1839,25 @@ async function analyzeWithEngine(forceRefresh = false) {
 		const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
 		const useWasm = !!getEvalElement('evalUseWasm')?.checked;
 
+		if (!useWasm && engineType === 'cold-clear') {
+			throw new Error('Cold Clear 2 only supports WASM mode');
+		}
+
 		let data;
 		if (useWasm) {
 			const holdId = holdP ? charToEnginePiece[holdP] : null;
 			const queueIds = queueForEngine();
-			if (engineType === 'falcon') {
-				data = await wasmHelper.findBestMoveFalcon(rows, pieceId, queueIds, holdId, {
+			data = await wasmHelper.findBestMove(engineType, {
+				rows,
+				pieceId,
+				queue: queueIds,
+				holdId,
+				overrides: {
 					...overrides,
 					b2b: sentB2b,
 					combo: sentCombo,
-				});
-			} else {
-				data = await wasmHelper.findBestMoveFusion(rows, pieceId, queueIds, holdId, overrides);
-			}
+				}
+			});
 			if (!data) throw new Error('WASM engine returned no result');
 		} else {
 			const payload = {
@@ -2248,6 +2238,7 @@ function initEvaluationUi() {
 	const depthInput = getEvalElement('evalDepth');
 	const useWasmCheckbox = getEvalElement('evalUseWasm');
 	const apiBaseContainer = getEvalElement('apiBaseContainer');
+	const coldClearParamsContainer = getEvalElement('coldClearParamsContainer');
 
 	if (useWasmCheckbox && apiBaseContainer) {
 		useWasmCheckbox.addEventListener('change', () => {
@@ -2260,24 +2251,31 @@ function initEvaluationUi() {
 		}
 	}
 
-	if (engineTypeSelect && falconWeightsContainer && fusionParamsContainer) {
+	if (engineTypeSelect && falconWeightsContainer && fusionParamsContainer && coldClearParamsContainer) {
 		engineTypeSelect.addEventListener('change', () => {
-			if (engineTypeSelect.value === 'falcon') {
-				falconWeightsContainer.style.display = 'grid';
-				fusionParamsContainer.style.display = 'none';
+			const type = engineTypeSelect.value;
+			falconWeightsContainer.style.display = type === 'falcon' ? 'grid' : 'none';
+			fusionParamsContainer.style.display = type === 'fusion' ? 'contents' : 'none';
+			coldClearParamsContainer.style.display = type === 'cold-clear' ? 'block' : 'none';
+
+			// Common fields
+			const beamRow = beamWidthInput?.closest('.eval-row');
+			const depthRow = depthInput?.closest('.eval-row');
+			if (beamRow) beamRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
+			if (depthRow) depthRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
+
+			if (type === 'falcon') {
 				if (!apiBaseInput.value || apiBaseInput.value == evalServerConfig.fusionApiBase || apiBaseInput.value.includes('8787')) {
 					apiBaseInput.value = evalServerConfig.falconApiBase;
 				}
-				if (beamWidthInput) beamWidthInput.value = '2000';
-				if (depthInput) depthInput.value = '10';
-			} else {
-				falconWeightsContainer.style.display = 'none';
-				fusionParamsContainer.style.display = 'contents';
+				if (beamWidthInput) beamWidthInput.value = '500';
+				if (depthInput) depthInput.value = '8';
+			} else if (type === 'fusion') {
 				if (!apiBaseInput.value || apiBaseInput.value == evalServerConfig.falconApiBase || apiBaseInput.value.includes('8888')) {
 					apiBaseInput.value = evalServerConfig.fusionApiBase;
 				}
-				if (beamWidthInput) beamWidthInput.value = '800';
-				if (depthInput) depthInput.value = '14';
+				if (beamWidthInput) beamWidthInput.value = '500';
+				if (depthInput) depthInput.value = '12';
 			}
 		});
 	}

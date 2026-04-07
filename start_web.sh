@@ -7,7 +7,7 @@ python3 -c '
 import http.server
 import socketserver
 
-PORT = 8888
+PORT = 8080
 Handler = http.server.SimpleHTTPRequestHandler
 Handler.extensions_map.update({
     ".wasm": "application/wasm",

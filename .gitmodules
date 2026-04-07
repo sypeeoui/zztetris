@@ -6,3 +6,6 @@
 	path = engines/falcon-2
 	url = git@github.com:sypeeoui/falcon-2.git
 	branch = devel
+[submodule "engines/cold-clear-2"]
+	path = engines/cold-clear-2
+	url = git@github.com:sypeeoui/cold-clear-2.git

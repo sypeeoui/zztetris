@@ -81,7 +81,14 @@
 						<select id="evalEngineType">
 							<option value="fusion">Fusion</option>
 							<option value="falcon">Falcon</option>
+							<option value="cold-clear">Cold Clear 2</option>
 						</select>
+					</div>
+					<div id="coldClearParamsContainer" style="display: none; grid-column: 1 / -1;">
+						<div class="eval-row eval-row--stack">
+							<label for="coldClearNodes">Nodes</label>
+							<input id="coldClearNodes" type="number" min="1" step="100" value="500" />
+						</div>
 					</div>
 					<div class="eval-row">
 						<input type="checkbox" id="evalUseWasm" checked />
@@ -92,7 +99,7 @@
 						<input id="evalApiBase" type="text" value="" />
 					</div>
 					<div class="eval-row eval-row--full">
-						<button class="button" id="evalReachabilityBtn" type="button">Reachability: relaxed</button>
+						<button class="button" id="evalReachabilityBtn" type="button">Reachability: off</button>
 					</div>
 					<div class="eval-row eval-row--stack">
 						<label for="evalInputRate">Playback input/s</label>
@@ -112,11 +119,11 @@
 					</div>
 					<div class="eval-row eval-row--stack">
 						<label for="evalBeamWidth">Beam width</label>
-						<input id="evalBeamWidth" type="number" min="1" step="1" value="800" />
+						<input id="evalBeamWidth" type="number" min="1" step="1" value="500" />
 					</div>
 					<div class="eval-row eval-row--stack">
 						<label for="evalDepth">Depth</label>
-						<input id="evalDepth" type="number" min="1" step="1" value="14" />
+						<input id="evalDepth" type="number" min="1" step="1" value="12" />
 					</div>
 
 					<div id="fusionParamsContainer" style="grid-column: 1 / -1; display: contents;">
