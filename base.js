@@ -876,6 +876,30 @@ function readNumberInput(id, fallback, minValue = null) {
 }
 
 function getSearchOverridesFromUi() {
+	const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
+	if (engineType === 'falcon') {
+		return {
+			depth: Math.floor(readNumberInput('evalDepth', 10, 1)),
+			beam_width: Math.floor(readNumberInput('evalBeamWidth', 2000, 1)),
+			weights: {
+				height: Math.floor(readNumberInput('falconWeight_height', -50)),
+				upper_half_height: Math.floor(readNumberInput('falconWeight_upper_half_height', -150)),
+				upper_quarter_height: Math.floor(readNumberInput('falconWeight_upper_quarter_height', -300)),
+				center_height: Math.floor(readNumberInput('falconWeight_center_height', -100)),
+				extra_wells: Math.floor(readNumberInput('falconWeight_extra_wells', -100)),
+				clear_none: Math.floor(readNumberInput('falconWeight_clear_none', -70)),
+				clear_mini: Math.floor(readNumberInput('falconWeight_clear_mini', 70)),
+				clear_normal: Math.floor(readNumberInput('falconWeight_clear_normal', 140)),
+				sent: Math.floor(readNumberInput('falconWeight_sent', 0)),
+				b2b: Math.floor(readNumberInput('falconWeight_b2b', 80)),
+				combo: Math.floor(readNumberInput('falconWeight_combo', 30)),
+				holes: Math.floor(readNumberInput('falconWeight_holes', -15)),
+				covered_holes: Math.floor(readNumberInput('falconWeight_covered_holes', -60)),
+				overstacked_holes: Math.floor(readNumberInput('falconWeight_overstacked_holes', -40)),
+				unevenness: Math.floor(readNumberInput('falconWeight_unevenness', -30)),
+			},
+		};
+	}
 	return {
 		beam_width: Math.floor(readNumberInput('evalBeamWidth', 800, 1)),
 		depth: Math.floor(readNumberInput('evalDepth', 14, 1)),
@@ -941,6 +965,7 @@ function buildEvaluationRoutes(data) {
 			score: data.score,
 			probability: null,
 			hold_used: data.hold_used,
+			input_sequence: data.input_sequence,
 		});
 	}
 
@@ -954,6 +979,7 @@ function buildEvaluationRoutes(data) {
 				score: candidate.score,
 				probability: candidate.probability,
 				hold_used: candidate.hold_used,
+				input_sequence: candidate.input_sequence,
 			});
 		});
 	}
@@ -1301,33 +1327,43 @@ function applyEngineInputCode(code) {
 
 	switch (code) {
 		case 0:
+		case 'none':
 			// NoInput: explicit no-op to keep mapping total.
 			return true;
 		case 1:
+		case 'moveRight':
 			evalControlApi.moveRight();
 			return true;
 		case 2:
+		case 'moveLeft':
 			evalControlApi.moveLeft();
 			return true;
 		case 3:
+		case 'dasRight':
 			evalControlApi.dasRight();
 			return true;
 		case 4:
+		case 'dasLeft':
 			evalControlApi.dasLeft();
 			return true;
 		case 5:
+		case 'rotateCW':
 			evalControlApi.rotateCw();
 			return true;
 		case 6:
+		case 'rotateCCW':
 			evalControlApi.rotateCcw();
 			return true;
 		case 7:
+		case 'rotate180':
 			evalControlApi.rotateFlip();
 			return true;
 		case 8:
+		case 'softDrop':
 			evalControlApi.softDrop();
 			return true;
 		case 9:
+		case 'hardDrop':
 			evalControlApi.hardDrop();
 			return true;
 		default:
@@ -1378,9 +1414,12 @@ async function playRoute(route) {
 		}
 
 		const rows = boardRowsForEngine();
-		let inputs = await getInputSequenceForMove(apiBase, rows, moveObj, false);
+		let inputs = route.input_sequence;
+		if (!inputs) {
+			inputs = await getInputSequenceForMove(apiBase, rows, moveObj, false);
+		}
 
-		if (!inputs.length) {
+		if (!inputs || !inputs.length) {
 			setEvalStatus('Playback stopped: no input sequence for selected move.', true);
 			return;
 		}
@@ -2057,6 +2096,34 @@ function initEvaluationUi() {
 	const toggleOptionsBtn = getEvalElement('evalToggleOptionsBtn');
 	const reachabilityBtn = getEvalElement('evalReachabilityBtn');
 	const apiBaseInput = getEvalElement('evalApiBase');
+	const engineTypeSelect = getEvalElement('evalEngineType');
+	const falconWeightsContainer = getEvalElement('falconWeightsContainer');
+	const fusionParamsContainer = getEvalElement('fusionParamsContainer');
+	const beamWidthInput = getEvalElement('evalBeamWidth');
+	const depthInput = getEvalElement('evalDepth');
+
+	if (engineTypeSelect && falconWeightsContainer && fusionParamsContainer) {
+		engineTypeSelect.addEventListener('change', () => {
+			if (engineTypeSelect.value === 'falcon') {
+				falconWeightsContainer.style.display = 'grid';
+				fusionParamsContainer.style.display = 'none';
+				if (!apiBaseInput.value || apiBaseInput.value.includes('8787')) {
+					apiBaseInput.value = 'http://127.0.0.1:8888';
+				}
+				if (beamWidthInput) beamWidthInput.value = '2000';
+				if (depthInput) depthInput.value = '10';
+			} else {
+				falconWeightsContainer.style.display = 'none';
+				fusionParamsContainer.style.display = 'contents';
+				if (apiBaseInput.value.includes('8888')) {
+					apiBaseInput.value = 'http://127.0.0.1:8787';
+				}
+				if (beamWidthInput) beamWidthInput.value = '800';
+				if (depthInput) depthInput.value = '14';
+			}
+		});
+	}
+
 	const inputRateEl = getEvalElement('evalInputRate');
 	const comboInput = getEvalElement('evalCurrentCombo');
 	const b2bInput = getEvalElement('evalCurrentB2b');

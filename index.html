@@ -76,27 +76,34 @@
 						<button class="button" id="evalAnalyzeBtn" type="button">Analyze</button>
 						<button class="button" id="evalToggleOptionsBtn" type="button" disabled>Show Options</button>
 					</div>
-					<div class="eval-row eval-row--stack eval-row--full">
+					<div class="eval-row eval-row--stack">
+						<label for="evalEngineType">Engine Type</label>
+						<select id="evalEngineType">
+							<option value="fusion">Fusion</option>
+							<option value="falcon">Falcon</option>
+						</select>
+					</div>
+					<div class="eval-row eval-row--stack">
 						<label for="evalApiBase">Engine API</label>
 						<input id="evalApiBase" type="text" value="" />
 					</div>
-					<div class="eval-row">
+					<div class="eval-row eval-row--full">
 						<button class="button" id="evalReachabilityBtn" type="button">Reachability: relaxed</button>
 					</div>
 					<div class="eval-row eval-row--stack">
-						<label for="evalInputRate">Route playback input/s</label>
+						<label for="evalInputRate">Playback input/s</label>
 						<input id="evalInputRate" type="number" min="0.2" step="0.2" value="2" />
 					</div>
 					<div class="eval-row eval-row--stack">
-						<label for="evalCurrentCombo">Current combo</label>
+						<label for="evalCurrentCombo">Combo</label>
 						<input id="evalCurrentCombo" type="number" min="0" step="1" value="0" />
 					</div>
 					<div class="eval-row eval-row--stack">
-						<label for="evalCurrentB2b">Current b2b</label>
+						<label for="evalCurrentB2b">B2B</label>
 						<input id="evalCurrentB2b" type="number" min="0" step="1" value="0" />
 					</div>
 					<div class="eval-row eval-row--stack">
-						<label for="evalPendingGarbage">Pending garbage</label>
+						<label for="evalPendingGarbage">Garbage</label>
 						<input id="evalPendingGarbage" type="number" min="0" step="1" value="0" />
 					</div>
 					<div class="eval-row eval-row--stack">
@@ -107,46 +114,113 @@
 						<label for="evalDepth">Depth</label>
 						<input id="evalDepth" type="number" min="1" step="1" value="14" />
 					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalTimeBudgetMs">Time budget ms</label>
-						<input id="evalTimeBudgetMs" type="number" min="1" step="1" value="50" />
+
+					<div id="fusionParamsContainer" style="grid-column: 1 / -1; display: contents;">
+						<div class="eval-row eval-row--stack">
+							<label for="evalTimeBudgetMs">Time budget ms</label>
+							<input id="evalTimeBudgetMs" type="number" min="1" step="1" value="50" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalFutilityDelta">Futility delta</label>
+							<input id="evalFutilityDelta" type="number" min="0" step="0.1" value="15" />
+						</div>
+						<div class="eval-row">
+							<input type="checkbox" id="evalUseTt" />
+							<label for="evalUseTt">Use TT</label>
+						</div>
+						<div class="eval-row">
+							<input type="checkbox" id="evalExtendQueue" checked />
+							<label for="evalExtendQueue">Extend queue 7-bag</label>
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalAttackWeight">Attack weight</label>
+							<input id="evalAttackWeight" type="number" step="0.01" value="0.5" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalChainWeight">Chain weight</label>
+							<input id="evalChainWeight" type="number" step="0.01" value="1.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalContextWeight">Context weight</label>
+							<input id="evalContextWeight" type="number" step="0.01" value="0.1" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalBoardWeight">Board weight</label>
+							<input id="evalBoardWeight" type="number" step="0.01" value="1.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalQMaxExtensions">Quiescence max ext</label>
+							<input id="evalQMaxExtensions" type="number" min="0" step="1" value="3" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalQBeamFraction">Quiescence beam frac</label>
+							<input id="evalQBeamFraction" type="number" min="0" max="1" step="0.01" value="0.15" />
+						</div>
 					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalFutilityDelta">Futility delta</label>
-						<input id="evalFutilityDelta" type="number" min="0" step="0.1" value="15" />
+
+					<div id="falconWeightsContainer" style="display: none; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_height">Height</label>
+							<input id="falconWeight_height" type="number" value="-50" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_upper_half_height">Up Half H</label>
+							<input id="falconWeight_upper_half_height" type="number" value="-150" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_upper_quarter_height">Up Qtr H</label>
+							<input id="falconWeight_upper_quarter_height" type="number" value="-300" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_center_height">Center H</label>
+							<input id="falconWeight_center_height" type="number" value="-100" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_extra_wells">Wells</label>
+							<input id="falconWeight_extra_wells" type="number" value="-100" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_clear_none">No Clear</label>
+							<input id="falconWeight_clear_none" type="number" value="-70" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_clear_mini">Mini Clr</label>
+							<input id="falconWeight_clear_mini" type="number" value="70" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_clear_normal">Norm Clr</label>
+							<input id="falconWeight_clear_normal" type="number" value="140" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_sent">Sent</label>
+							<input id="falconWeight_sent" type="number" value="0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_b2b">B2B</label>
+							<input id="falconWeight_b2b" type="number" value="80" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_combo">Combo</label>
+							<input id="falconWeight_combo" type="number" value="30" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_holes">Holes</label>
+							<input id="falconWeight_holes" type="number" value="-15" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_covered_holes">Cov Hole</label>
+							<input id="falconWeight_covered_holes" type="number" value="-60" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_overstacked_holes">Ovstk Hol</label>
+							<input id="falconWeight_overstacked_holes" type="number" value="-40" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="falconWeight_unevenness">Uneven</label>
+							<input id="falconWeight_unevenness" type="number" value="-30" />
+						</div>
 					</div>
-					<div class="eval-row">
-						<input type="checkbox" id="evalUseTt" />
-						<label for="evalUseTt">Use TT</label>
-					</div>
-					<div class="eval-row">
-						<input type="checkbox" id="evalExtendQueue" checked />
-						<label for="evalExtendQueue">Extend queue 7-bag</label>
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalAttackWeight">Attack weight</label>
-						<input id="evalAttackWeight" type="number" step="0.01" value="0.5" />
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalChainWeight">Chain weight</label>
-						<input id="evalChainWeight" type="number" step="0.01" value="1.0" />
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalContextWeight">Context weight</label>
-						<input id="evalContextWeight" type="number" step="0.01" value="0.1" />
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalBoardWeight">Board weight</label>
-						<input id="evalBoardWeight" type="number" step="0.01" value="1.0" />
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalQMaxExtensions">Quiescence max ext</label>
-						<input id="evalQMaxExtensions" type="number" min="0" step="1" value="3" />
-					</div>
-					<div class="eval-row eval-row--stack">
-						<label for="evalQBeamFraction">Quiescence beam frac</label>
-						<input id="evalQBeamFraction" type="number" min="0" max="1" step="0.01" value="0.15" />
-					</div>
+
 					<div class="eval-row eval-row--stack eval-row--full">
 						<label>Routes</label>
 						<div id="evalRoutesList" class="eval-routes-list"></div>
