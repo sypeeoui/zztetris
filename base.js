@@ -338,6 +338,7 @@ const wasmHelper = {
 	worker: null,
 	initPromise: null,
 	pendingRequest: null,
+	currentRequestId: 0,
 
 	getBaseUrl() {
 		return window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/';
@@ -347,10 +348,11 @@ const wasmHelper = {
 		if (this.worker) return;
 		this.worker = new Worker('./engineWorker.js');
 		this.worker.onmessage = (e) => {
-			if (e.data.type === 'result' || e.data.type === 'error') {
-				if (this.pendingRequest) {
-					if (e.data.type === 'error') this.pendingRequest.reject(new Error(e.data.error));
-					else this.pendingRequest.resolve(e.data.result);
+			const { type, result, error, requestId } = e.data;
+			if (type === 'result' || type === 'error') {
+				if (this.pendingRequest && this.pendingRequest.id === requestId) {
+					if (type === 'error') this.pendingRequest.reject(new Error(error));
+					else this.pendingRequest.resolve(result);
 					this.pendingRequest = null;
 				}
 			}
@@ -364,7 +366,8 @@ const wasmHelper = {
 				if (e.data.type === 'init_ok' && e.data.engineType === engineType) {
 					this.worker.removeEventListener('message', handler);
 					resolve();
-				} else if (e.data.type === 'error') {
+				} else if (e.data.type === 'error' && !e.data.requestId) {
+					// Only handle global/init errors here
 					this.worker.removeEventListener('message', handler);
 					reject(new Error(e.data.error));
 				}
@@ -380,15 +383,19 @@ const wasmHelper = {
 
 	async findBestMove(engineType, payload) {
 		await this.initEngine(engineType === 'cold-clear' ? 'coldClear' : engineType);
+		
+		const requestId = ++this.currentRequestId;
 		if (this.pendingRequest) {
 			this.pendingRequest.reject(new Error('Aborted by new request'));
 		}
+		
 		return new Promise((resolve, reject) => {
-			this.pendingRequest = { resolve, reject };
+			this.pendingRequest = { resolve, reject, id: requestId };
 			this.worker.postMessage({
 				type: 'find_best_move',
 				engineType: engineType === 'cold-clear' ? 'coldClear' : engineType,
-				payload
+				payload,
+				requestId
 			});
 		});
 	}
@@ -1723,11 +1730,25 @@ function simulateOverlayForRoute(routeMoves, baseRows) {
 
 	routeMoves.forEach((moveObj, stepIndex) => {
 		const cells = getMoveCells(moveObj);
-		if (!cells.length) return;
+		if (!cells.length) {
+			console.warn('simulateOverlayForRoute: getMoveCells returned no cells for move', moveObj);
+			return;
+		}
 
-		const legal = cells.every(
-			(cell) => inRange(cell.x, 0, 9) && inRange(cell.y, 0, 39) && (rows[cell.y] & (1 << cell.x)) == 0
-		);
+		const legal = cells.every((cell) => {
+			const inBounds = inRange(cell.x, 0, 9) && inRange(cell.y, 0, 39);
+			if (!inBounds) {
+				console.warn(`simulateOverlayForRoute: cell out of bounds: x=${cell.x}, y=${cell.y} for piece ${cell.piece}`);
+				return false;
+			}
+			const free = (rows[cell.y] & (1 << cell.x)) == 0;
+			if (!free) {
+				console.warn(`simulateOverlayForRoute: cell occupied at x=${cell.x}, y=${cell.y} for piece ${cell.piece}`);
+				return false;
+			}
+			return true;
+		});
+
 		if (!legal) return;
 
 		cells.forEach((cell) => {
@@ -1912,10 +1933,11 @@ async function analyzeWithEngine(forceRefresh = false) {
 			routes: finalRoutes,
 			score: data.score,
 		};
-		evalState.lastAppliedHash = stateHash;
 
 		renderRoutesList();
 		rebuildEvaluationOverlay();
+		
+		evalState.lastAppliedHash = stateHash;
 		if (!finalRoutes.length) {
 			setEvalStatus(
 				`No reachable route (sent: b2b=${sentB2b}, combo=${sentCombo}, pending=${sentPending}).`,

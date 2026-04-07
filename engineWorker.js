@@ -7,7 +7,7 @@ let engines = {
 };
 
 self.onmessage = async function(e) {
-    const { type, engineType, payload } = e.data;
+    const { type, engineType, payload, requestId } = e.data;
 
     if (type === 'init') {
         try {
@@ -22,9 +22,9 @@ self.onmessage = async function(e) {
     if (type === 'find_best_move') {
         try {
             const result = await findBestMove(engineType, payload);
-            self.postMessage({ type: 'result', result });
+            self.postMessage({ type: 'result', result, requestId });
         } catch (err) {
-            self.postMessage({ type: 'error', error: err.message });
+            self.postMessage({ type: 'error', error: err.message, requestId });
         }
     }
 };
