@@ -312,6 +312,10 @@ const pieceBaseCoords = {
 };
 var evalUiReady = false;
 var evalConfigLoadPromise = null;
+var evalServerConfig = {
+	fusionApiBase: 'http://127.0.0.1:8787',
+	falconApiBase: 'http://127.0.0.1:8888',
+};
 var evalServerDefaultApiBase = '';
 var evalState = {
 	enabled: false,
@@ -765,6 +769,10 @@ function loadEvalServerConfig() {
 		})
 		.then((config) => {
 			if (!config || typeof config != 'object') return;
+
+			if (config.fusionApiBase) evalServerConfig.fusionApiBase = normalizeEvalApiBase(config.fusionApiBase);
+			if (config.falconApiBase) evalServerConfig.falconApiBase = normalizeEvalApiBase(config.falconApiBase);
+
 			const configuredApiBase = normalizeEvalApiBase(
 				config.engineApiBase || config.defaultEngineUrl || config.evalApiBase
 			);
@@ -781,6 +789,14 @@ function loadEvalServerConfig() {
 }
 
 function getDefaultEvalApiBase() {
+	const engineType = getEvalElement('evalEngineType')?.value || 'fusion';
+	if (engineType === 'falcon' && evalServerConfig.falconApiBase) {
+		return evalServerConfig.falconApiBase;
+	}
+	if (engineType === 'fusion' && evalServerConfig.fusionApiBase) {
+		return evalServerConfig.fusionApiBase;
+	}
+
 	if (evalServerDefaultApiBase) {
 		return evalServerDefaultApiBase;
 	}
@@ -2107,16 +2123,16 @@ function initEvaluationUi() {
 			if (engineTypeSelect.value === 'falcon') {
 				falconWeightsContainer.style.display = 'grid';
 				fusionParamsContainer.style.display = 'none';
-				if (!apiBaseInput.value || apiBaseInput.value.includes('8787')) {
-					apiBaseInput.value = 'http://127.0.0.1:8888';
+				if (!apiBaseInput.value || apiBaseInput.value == evalServerConfig.fusionApiBase || apiBaseInput.value.includes('8787')) {
+					apiBaseInput.value = evalServerConfig.falconApiBase;
 				}
 				if (beamWidthInput) beamWidthInput.value = '2000';
 				if (depthInput) depthInput.value = '10';
 			} else {
 				falconWeightsContainer.style.display = 'none';
 				fusionParamsContainer.style.display = 'contents';
-				if (apiBaseInput.value.includes('8888')) {
-					apiBaseInput.value = 'http://127.0.0.1:8787';
+				if (!apiBaseInput.value || apiBaseInput.value == evalServerConfig.falconApiBase || apiBaseInput.value.includes('8888')) {
+					apiBaseInput.value = evalServerConfig.fusionApiBase;
 				}
 				if (beamWidthInput) beamWidthInput.value = '800';
 				if (depthInput) depthInput.value = '14';

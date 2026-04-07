@@ -1,3 +1,4 @@
 {
-  "engineApiBase": "http://localhost:8989"
+  "fusionApiBase": "http://127.0.0.1:8787",
+  "falconApiBase": "http://127.0.0.1:8888"
 }
