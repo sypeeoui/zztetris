@@ -220,6 +220,8 @@ var holdP = '';
 var held = false;
 var Ldn = (Rdn = false);
 var rot = 0;
+var lastKick = 0;
+var lastRotationType = 0; // 90 or 180
 var oldcombo = 0;
 var oldb2b = 0;
 var dasID = 0;
@@ -462,6 +464,32 @@ function canMove(p, x, y) {
 		}
 	}
 	return free >= 4;
+}
+
+function isImmobile(p, x, y) {
+	var currentP = pieces[piece][rot];
+	function isBlocked(nx, ny) {
+		for (let r = 0; r < 4; r++) {
+			for (let cell = 0; cell < 4; cell++) {
+				if (p[r][cell] == 1) {
+					var tx = nx + cell;
+					var ty = ny + r;
+					if (tx < 0 || tx >= 10 || ty < 0 || ty >= 40) return true;
+					if (board[ty] && board[ty][tx] && board[ty][tx].t == 1) {
+						var isSelf =
+							tx >= x &&
+							tx < x + 4 &&
+							ty >= y &&
+							ty < y + 4 &&
+							currentP[ty - y][tx - x] == 1;
+						if (!isSelf) return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+	return isBlocked(x, y - 1) && isBlocked(x - 1, y) && isBlocked(x + 1, y);
 }
 
 function checkTopOut() {
@@ -848,17 +876,21 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	function rotate(dir) {
 		var newRot = (rot + rotDir[dir]) % 4;
+		lastRotationType = dir === 'R180' ? 180 : 90;
 
+		var kickIndex = 0;
 		for (const kick of kicks[`${piece == 'I' ? 'I' : 'N'}${rot}-${newRot}`]) {
 			if (canMove(pieces[piece][newRot], xPOS + kick[0], yPOS - kick[1])) {
 				// Y is inverted lol
 				xPOS += kick[0];
 				yPOS -= kick[1];
 				rot = newRot;
+				lastKick = kickIndex;
 				playSnd('Rotate', true);
 				lastAction = 'ROT';
 				break;
 			}
+			kickIndex++;
 		}
 
 		clearActive();
@@ -939,16 +971,17 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 	function hardDrop() {
-		if (yPOS != yGHO) lastAction = 'HD';
+		if (yPOS != yGHO) {
+			if (lastAction != 'ROT') lastAction = 'HD';
+		}
 		yPOS = yGHO;
 		held = false;
 		playSnd('HardDrop', true);
 		setShape(true);
 		clearActive();
-		
+
 		cleared = checkLines();
 		newPiece();
-
         if (cheese) {
             if (cleared == 0) {
                 curCol = Math.floor(Math.random() * 10);
@@ -996,7 +1029,9 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	function checkLines() {
 		tspin = false;
 		mini = false;
+		allspinMini = false;
 		pc = false;
+		spinText = '';
 		if (piece == 'T' && lastAction == 'ROT') {
 			corners = [
 				[yPOS + 1, xPOS],
@@ -1009,7 +1044,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			filledCorners = 0;
 			corners.forEach((corner) => {
 				if (corner[0] >= 40 || corner[1] < 0 || corner[1] >= 10) filledCorners++;
-				else if (board[corner[0]][corner[1]]['t'] == 1) filledCorners++;
+				else if (board[corner[0]] && board[corner[0]][corner[1]] && board[corner[0]][corner[1]]['t'] == 1) filledCorners++;
 			});
 			tspin = filledCorners >= 3;
 
@@ -1017,9 +1052,26 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				filledFacingCorners = 0;
 				facingCorners.forEach((corner) => {
 					if (corner[0] >= 40 || corner[1] < 0 || corner[1] >= 10) filledFacingCorners++;
-					else if (board[corner[0]][corner[1]]['t'] == 1) filledFacingCorners++;
+					else if (board[corner[0]] && board[corner[0]][corner[1]] && board[corner[0]][corner[1]]['t'] == 1) filledFacingCorners++;
 				});
-				mini = filledFacingCorners < 2; // no I'm not adding the "TST Kick and Fin Kick" exceptions. STSDs and Fins deserve to be mini
+				mini = filledFacingCorners < 2;
+
+				if (mini && lastRotationType === 90 && lastKick === 4) {
+					mini = false;
+				}
+			} else {
+				if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
+					tspin = true;
+					mini = true;
+				}
+			}
+		}
+
+		// Non-T piece spin detection (L, J, S, Z, I)
+		if (!tspin && piece != 'T' && piece != 'O' && lastAction == 'ROT') {
+			if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
+				mini = true;
+				allspinMini = true;
 			}
 		}
 
