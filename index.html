@@ -153,11 +153,66 @@
 						</div>
 						<div class="eval-row eval-row--stack">
 							<label for="evalContextWeight">Context weight</label>
-							<input id="evalContextWeight" type="number" step="0.01" value="0.1" />
+							<input id="evalContextWeight" type="number" step="0.01" value="0.25" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalB2bWeight">B2B weight</label>
+							<input id="evalB2bWeight" type="number" step="0.01" value="1.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalSpinFullWeight">Spin Full bonus</label>
+							<input id="evalSpinFullWeight" type="number" step="0.1" value="8.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalSpinMiniWeight">Spin Mini bonus</label>
+							<input id="evalSpinMiniWeight" type="number" step="0.1" value="2.0" />
 						</div>
 						<div class="eval-row eval-row--stack">
 							<label for="evalBoardWeight">Board weight</label>
 							<input id="evalBoardWeight" type="number" step="0.01" value="1.0" />
+						</div>
+
+						<div class="eval-row eval-row--stack" style="grid-column: 1 / -1;">
+							<hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;" />
+							<div style="font-weight: bold; margin-bottom: 5px;">Attack Logic</div>
+						</div>
+
+						<div class="eval-row eval-row--stack">
+							<label for="evalPcGarbage">PC Attack</label>
+							<input id="evalPcGarbage" type="number" min="0" step="1" value="5" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalPcB2b">PC B2B Bonus</label>
+							<input id="evalPcB2b" type="number" min="0" step="1" value="2" />
+						</div>
+						<div class="eval-row">
+							<input type="checkbox" id="evalB2bChaining" checked />
+							<label for="evalB2bChaining">B2B Chaining</label>
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalB2bBonus">B2B Bonus</label>
+							<input id="evalB2bBonus" type="number" min="0" step="1" value="1" />
+						</div>
+						<div class="eval-row eval-row--stack" style="grid-column: 1 / -1;">
+							<label for="evalBaseAttack">Base Attack (0,1,2,3,4 lines)</label>
+							<input id="evalBaseAttack" type="text" value="0,0,1,2,4" />
+						</div>
+						<div class="eval-row eval-row--stack" style="grid-column: 1 / -1;">
+							<label for="evalMiniSpinAttack">Mini Spin Attack (0,1,2,3,4 lines)</label>
+							<input id="evalMiniSpinAttack" type="text" value="0,0,1,2,10" />
+						</div>
+						<div class="eval-row eval-row--stack" style="grid-column: 1 / -1;">
+							<label for="evalSpinAttack">Spin Attack (0,1,2,3,4 lines)</label>
+							<input id="evalSpinAttack" type="text" value="0,2,4,6,10" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalComboTable">Combo Table</label>
+							<select id="evalComboTable">
+								<option value="0">Multiplier</option>
+								<option value="1">Classic</option>
+								<option value="2">Modern</option>
+								<option value="3">None</option>
+							</select>
 						</div>
 						<div class="eval-row eval-row--stack">
 							<label for="evalQMaxExtensions">Quiescence max ext</label>

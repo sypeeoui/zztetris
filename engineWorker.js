@@ -59,7 +59,14 @@ async function findBestMove(engineType, payload) {
     if (engineType === 'fusion') {
         const { JsBoard, find_best_move } = engines.fusion.module;
         const board = JsBoard.from_rows(new BigUint64Array(rows.map(BigInt)));
-        const frame = { queue, hold: holdId };
+        const frame = { 
+            queue, 
+            hold: holdId,
+            b2b: overrides.b2b,
+            combo: overrides.combo,
+            pending_garbage: overrides.pending_garbage,
+            search: overrides
+        };
         const res = find_best_move(board, pieceId, frame);
         return res ? {
             best_move: res,

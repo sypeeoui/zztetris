@@ -172,23 +172,28 @@ footer {
 	margin: 0;
 }
 
-#evalApiBase,
-#evalRouteSelect,
-#evalInputRate,
-#evalCurrentCombo,
-#evalCurrentB2b,
-#evalPendingGarbage,
-#evalBeamWidth,
-#evalDepth,
-#evalTimeBudgetMs,
-#evalFutilityDelta,
-#evalAttackWeight,
-#evalChainWeight,
-#evalContextWeight,
-#evalBoardWeight,
-#evalQMaxExtensions,
-#evalQBeamFraction,
-[id^="falconWeight_"] {
+.eval-panel input,
+.eval-panel select,
+.eval-panel input#evalApiBase,
+.eval-panel select#evalRouteSelect,
+.eval-panel input#evalInputRate,
+.eval-panel input#evalCurrentCombo,
+.eval-panel input#evalCurrentB2b,
+.eval-panel input#evalPendingGarbage,
+.eval-panel input#evalBeamWidth,
+.eval-panel input#evalDepth,
+.eval-panel input#evalTimeBudgetMs,
+.eval-panel input#evalFutilityDelta,
+.eval-panel input#evalAttackWeight,
+.eval-panel input#evalChainWeight,
+.eval-panel input#evalContextWeight,
+.eval-panel input#evalB2bWeight,
+.eval-panel input#evalSpinFullWeight,
+.eval-panel input#evalSpinMiniWeight,
+.eval-panel input#evalBoardWeight,
+.eval-panel input#evalQMaxExtensions,
+.eval-panel input#evalQBeamFraction,
+.eval-panel input[id^="falconWeight_"] {
 	width: 100%;
 	box-sizing: border-box;
 	background: #2a2a2a;

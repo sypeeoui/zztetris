@@ -825,11 +825,20 @@ function queueForEngine(maxLen = 14) {
 function getEvaluationStateHash() {
 	const rows = boardRowsForEngine();
 	const queueIds = queueForEngine();
+	const overrides = getSearchOverridesFromUi();
+	const sentB2b = currentB2BForEngine();
+	const sentCombo = currentComboForEngine();
+	const sentPending = Math.floor(readNumberInput('evalPendingGarbage', 0, 0));
+
 	return JSON.stringify({
 		rows,
 		piece,
 		holdP,
 		queue: queueIds,
+		b2b: sentB2b,
+		combo: sentCombo,
+		pending: sentPending,
+		overrides,
 	});
 }
 
@@ -1025,10 +1034,21 @@ function getSearchOverridesFromUi() {
 		extend_queue_7bag: !!getEvalElement('evalExtendQueue')?.checked,
 		attack_weight: readNumberInput('evalAttackWeight', 0.5, 0),
 		chain_weight: readNumberInput('evalChainWeight', 1.0, 0),
-		context_weight: readNumberInput('evalContextWeight', 0.1, 0),
+		context_weight: readNumberInput('evalContextWeight', 0.25, 0),
+		b2b_weight: readNumberInput('evalB2bWeight', 1.0, 0),
+		spin_full_weight: readNumberInput('evalSpinFullWeight', 8.0, 0),
+		spin_mini_weight: readNumberInput('evalSpinMiniWeight', 2.0, 0),
 		board_weight: readNumberInput('evalBoardWeight', 1.0, 0),
 		quiescence_max_extensions: Math.floor(readNumberInput('evalQMaxExtensions', 3, 0)),
 		quiescence_beam_fraction: readNumberInput('evalQBeamFraction', 0.15, 0),
+		pc_garbage: Math.floor(readNumberInput('evalPcGarbage', 5, 0)),
+		pc_b2b: Math.floor(readNumberInput('evalPcB2b', 2, 0)),
+		b2b_chaining: !!getEvalElement('evalB2bChaining')?.checked,
+		b2b_bonus: Math.floor(readNumberInput('evalB2bBonus', 1, 0)),
+		base_attack: getEvalElement('evalBaseAttack')?.value || "0,0,1,2,4",
+		mini_spin_attack: getEvalElement('evalMiniSpinAttack')?.value || "0,0,1,2,10",
+		spin_attack: getEvalElement('evalSpinAttack')?.value || "0,2,4,6,10",
+		combo_table: parseInt(getEvalElement('evalComboTable')?.value || "0"),
 	};
 }
 
@@ -1905,6 +1925,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 					...overrides,
 					b2b: sentB2b,
 					combo: sentCombo,
+					pending_garbage: sentPending,
 				}
 			});
 			if (!data) throw new Error('WASM engine returned no result');
@@ -2398,6 +2419,37 @@ function initEvaluationUi() {
 			applyEvalChainInputsToGame();
 		});
 	}
+
+	// Add listeners for all fusion parameters to trigger re-analysis
+	[
+		'evalBeamWidth',
+		'evalDepth',
+		'evalTimeBudgetMs',
+		'evalFutilityDelta',
+		'evalAttackWeight',
+		'evalChainWeight',
+		'evalContextWeight',
+		'evalB2bWeight',
+		'evalSpinFullWeight',
+		'evalSpinMiniWeight',
+		'evalBoardWeight',
+		'evalQMaxExtensions',
+		'evalQBeamFraction',
+		'evalUseTt',
+		'evalExtendQueue',
+		'evalPcGarbage',
+		'evalPcB2b',
+		'evalB2bChaining',
+		'evalB2bBonus',
+		'evalBaseAttack',
+		'evalMiniSpinAttack',
+		'evalSpinAttack',
+		'evalComboTable',
+		].forEach(id => {
+		getEvalElement(id)?.addEventListener('change', () => {
+			if (evalState.enabled) analyzeWithEngine(true);
+		});
+	});
 
 	toggleOptionsBtn.addEventListener('click', () => {
 		evalState.optionsHidden = !evalState.optionsHidden;
