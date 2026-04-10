@@ -195,7 +195,7 @@ const notf = $('#notif');
 
 const names = 'ZLOSIJT'.split(''); // piece names
 
-const spawn = [4, hiddenRows - 2];
+const spawn = [3, hiddenRows - 2];
 const a = { t: 0, c: '' }; // t:0 = nothing   t:1 = heap mino   t:2 = current mino   t:3 = ghost mino
 //? ^^ ??? - g3ner1c
 
