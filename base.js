@@ -1036,6 +1036,11 @@ function getSearchOverridesFromUi() {
 		chain_weight: readNumberInput('evalChainWeight', 1.0, 0),
 		context_weight: readNumberInput('evalContextWeight', 0.25, 0),
 		b2b_weight: readNumberInput('evalB2bWeight', 1.0, 0),
+		downstack_weight: readNumberInput('evalDownstackWeight', 0.20, 0),
+		downstack_avg_height_weight: readNumberInput('evalDownstackAvgHeightWeight', 0.0),
+		downstack_min_height_weight: readNumberInput('evalDownstackMinHeightWeight', -5.0),
+		path_decay: readNumberInput('evalPathDecay', 1.0, 0),
+		pc_mode: !!getEvalElement('evalPcMode')?.checked,
 		spin_full_weight: readNumberInput('evalSpinFullWeight', 8.0, 0),
 		spin_mini_weight: readNumberInput('evalSpinMiniWeight', 2.0, 0),
 		board_weight: readNumberInput('evalBoardWeight', 1.0, 0),
@@ -2011,7 +2016,15 @@ async function analyzeWithEngine(forceRefresh = false) {
 		}
 	} catch (error) {
 		evalState.overlayCells = [];
-		setEvalStatus(`Evaluation failed: ${error.message}`, true);
+		evalState.latestData = null;
+		renderRoutesList();
+		rebuildEvaluationOverlay();
+		
+		if (error.message.includes('no PC solution found') || error.message.includes('no result')) {
+			setEvalStatus('No PC solution found within search depth.');
+		} else {
+			setEvalStatus(`Evaluation failed: ${error.message}`, true);
+		}
 	} finally {
 		evalState.inFlight = false;
 	}
@@ -2430,6 +2443,8 @@ function initEvaluationUi() {
 		'evalChainWeight',
 		'evalContextWeight',
 		'evalB2bWeight',
+		'evalDownstackWeight',
+		'evalPcMode',
 		'evalSpinFullWeight',
 		'evalSpinMiniWeight',
 		'evalBoardWeight',
@@ -2458,6 +2473,7 @@ function initEvaluationUi() {
 
 	applyCompactOptionsVisibility();
 	syncEvalChainInputsFromGame();
+	initPresets();
 	setEvalStatus('Evaluation is disabled.');
 	evalUiReady = true;
 }
@@ -2575,8 +2591,18 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	//* keyboard input
 	document.addEventListener('keydown', e => {
+		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+			return;
+		}
 		const input = ctrl[e.code];
-		if (input) keysDown |= flags[input]; //* sets key in keysDown
+		if (input) {
+			e.preventDefault();
+			if (document.activeElement && document.activeElement.blur) {
+				document.activeElement.blur();
+			}
+			keysDown |= flags[input]; //* sets key in keysDown
+		}
+		
 		if (e.repeat) return; //* if held down, do nothing
 		if (input) {
 			switch (input) {  // handles non-movement keys
@@ -2612,8 +2638,14 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	});
 
 	document.addEventListener('keyup', function (e) {
+		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+			return;
+		}
 		const input = ctrl[e.code];
 		if (input) {
+			if (document.activeElement && document.activeElement.blur) {
+				document.activeElement.blur();
+			}
 			if (keysDown & flags[input]) keysDown ^= flags[input];
 			// remove key from keysDown
 			if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
@@ -2963,19 +2995,30 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 
 		clearedIndexes = [];
+		let permanentLinesCleared = 0;
 
 		board = board.filter((r, i) => {
-			temp = !r
-				.map((c) => {
-					return c.t == 1;
-				})
-				.every((v) => v);
-			if (!temp) clearedIndexes.push(i);
-			return temp;
+			let isFull = r.every((c) => c.t == 1);
+			if (isFull) {
+				clearedIndexes.push(i);
+				if (r.some(c => c.permanent)) {
+					permanentLinesCleared++;
+				}
+				return false;
+			}
+			return true;
 		});
 		var l = board.length;
 		for (let i = 0; i < boardSize[1] - l; i++) {
 			board.unshift(aRow());
+		}
+
+		if (permanentLinesCleared > 0) {
+			// Respawn permanent garbage at the bottom
+			// Use the current messiness/permanent settings from the UI if available, 
+			// otherwise default to 0% messiness and permanent=true.
+			const messiness = document.getElementById('practiceMessiness') ? parseInt(document.getElementById('practiceMessiness').value) : 0;
+			addPracticeGarbage(permanentLinesCleared, messiness, true);
 		}
 		var cleared = clearedIndexes.length;
 
@@ -3088,4 +3131,232 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}, 0);
     */
 	window.requestAnimationFrame(render);
+}
+
+function updateQueue() {
+	temp = false;
+	ctxN.clearRect(0, 0, 90, 360);
+	ctxH.clearRect(0, 0, 90, 60);
+	for (let i = 0; i < 7; i++) {
+		if (queue[i] == '|') {
+			ctxN.beginPath();
+			ctxN.moveTo(0, i * 60);
+			ctxN.lineTo(90, i * 60);
+			ctxN.stroke();
+			temp = true;
+		} else {
+			j = i;
+			if (temp) j--;
+			ctxN.drawImage(imgs[queue[i]], 0, j * 60);
+		}
+	}
+	if (holdP) ctxH.drawImage(imgs[holdP], 0, 0);
+}
+
+function shuffleQueue() {
+	// locate bag separator
+	index = 0;
+	while (index < queue.length && queue[index] != '|') index++;
+
+	tempQueue = queue.slice(0, index).concat(piece).shuffle().concat('|');
+	// the queue before the bag separator (the current bag), plus active piece; shuffle it; add bag separator to end
+	piece = tempQueue.shift();
+	queue = tempQueue;
+
+	while (queue.length < 10) {
+		var shuf = names.shuffle();
+		shuf.map((p) => queue.push(p));
+		queue.push('|');
+	}
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	rot = 0;
+	clearActive();
+	checkTopOut();
+	updateQueue();
+	updateGhost();
+	setShape();
+	updateHistory();
+}
+
+function shuffleQueuePlusHold() {
+	if (!holdP) {
+		shuffleQueue();
+		return;
+	}
+
+	index = 0;
+	while (index < queue.length && queue[index] != '|') index++;
+
+	tempQueue = queue.slice(0, index).concat(piece, holdP).shuffle().concat('|');
+	holdP = tempQueue.shift();
+	piece = tempQueue.shift();
+	queue = tempQueue;
+
+	while (queue.length < 10) {
+		var shuf = names.shuffle();
+		shuf.map((p) => queue.push(p));
+		queue.push('|');
+	}
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	rot = 0;
+	clearActive();
+	checkTopOut();
+	updateQueue();
+	updateGhost();
+	setShape();
+	updateHistory();
+}
+
+function updateKickTable() {
+	kicks = kicksets[document.getElementById('kickset').value];
+}
+
+function saveCustomPreset() {
+	const name = prompt('Enter preset name:');
+	if (!name) return;
+
+	const config = {
+		beam_width: readNumberInput('evalBeamWidth', 800, 1),
+		depth: readNumberInput('evalDepth', 14, 1),
+		futility_delta: readNumberInput('evalFutilityDelta', 15.0, 0),
+		time_budget_ms: readNumberInput('evalTimeBudgetMs', 50, 1),
+		use_tt: !!getEvalElement('evalUseTt')?.checked,
+		extend_queue_7bag: !!getEvalElement('evalExtendQueue')?.checked,
+		attack_weight: readNumberInput('evalAttackWeight', 0.5, 0),
+		chain_weight: readNumberInput('evalChainWeight', 1.0, 0),
+		context_weight: readNumberInput('evalContextWeight', 0.25, 0),
+		b2b_weight: readNumberInput('evalB2bWeight', 1.0, 0),
+		downstack_weight: readNumberInput('evalDownstackWeight', 0.20, 0),
+		downstack_avg_height_weight: readNumberInput('evalDownstackAvgHeightWeight', 0.0),
+		downstack_min_height_weight: readNumberInput('evalDownstackMinHeightWeight', -5.0),
+		path_decay: readNumberInput('evalPathDecay', 1.0, 0),
+		pc_mode: !!getEvalElement('evalPcMode')?.checked,
+		spin_full_weight: readNumberInput('evalSpinFullWeight', 8.0, 0),
+		spin_mini_weight: readNumberInput('evalSpinMiniWeight', 2.0, 0),
+		board_weight: readNumberInput('evalBoardWeight', 1.0, 0),
+	};
+
+	let custom = {};
+	try {
+		custom = JSON.parse(localStorage.getItem('zztetris_custom_presets') || '{}');
+	} catch (e) {}
+	custom[name] = config;
+	localStorage.setItem('zztetris_custom_presets', JSON.stringify(custom));
+	loadCustomPresets(name);
+}
+
+function loadCustomPresets(selectedName = null) {
+	const select = getEvalElement('evalPreset');
+	if (!select) return;
+
+	// Keep built-in presets
+	while (select.options.length > 3) {
+		select.remove(3);
+	}
+
+	let custom = {};
+	try {
+		custom = JSON.parse(localStorage.getItem('zztetris_custom_presets') || '{}');
+	} catch (e) {}
+
+	for (const name in custom) {
+		const opt = document.createElement('option');
+		opt.value = 'custom_' + name;
+		opt.textContent = name;
+		select.appendChild(opt);
+		if (selectedName === name) {
+			select.value = opt.value;
+		}
+	}
+}
+
+function initPresets() {
+	const select = getEvalElement('evalPreset');
+	if (!select) return;
+
+	loadCustomPresets();
+
+	select.addEventListener('change', () => {
+		const val = select.value;
+		if (val === 'default') {
+			getEvalElement('evalAttackWeight').value = 0.5;
+			getEvalElement('evalChainWeight').value = 1.0;
+			getEvalElement('evalB2bWeight').value = 1.0;
+			getEvalElement('evalDownstackWeight').value = 0.20;
+			getEvalElement('evalDownstackAvgHeightWeight').value = 0.0;
+			getEvalElement('evalDownstackMinHeightWeight').value = -5.0;
+			getEvalElement('evalPathDecay').value = 1.0;
+			getEvalElement('evalPcMode').checked = false;
+			getEvalElement('evalBoardWeight').value = 1.0;
+		} else if (val === 'downstack') {
+			getEvalElement('evalAttackWeight').value = 0;
+			getEvalElement('evalChainWeight').value = 0;
+			getEvalElement('evalB2bWeight').value = 0;
+			getEvalElement('evalDownstackWeight').value = 1.0;
+			getEvalElement('evalDownstackAvgHeightWeight').value = 0.0;
+			getEvalElement('evalDownstackMinHeightWeight').value = -10.0;
+			getEvalElement('evalPathDecay').value = 0.95;
+			getEvalElement('evalPcMode').checked = false;
+			getEvalElement('evalBoardWeight').value = 0.1;
+		}
+ else if (val === 'pc') {
+			getEvalElement('evalAttackWeight').value = 0;
+			getEvalElement('evalChainWeight').value = 0;
+			getEvalElement('evalB2bWeight').value = 0;
+			getEvalElement('evalDownstackWeight').value = 0;
+			getEvalElement('evalPcMode').checked = true;
+			getEvalElement('evalPathDecay').value = 1.0;
+			getEvalElement('evalBoardWeight').value = 0;
+			// PC search needs depth to cover the board/queue
+			getEvalElement('evalDepth').value = 20;
+			}
+ else if (val.startsWith('custom_')) {
+			const name = val.replace('custom_', '');
+			let custom = {};
+			try {
+				custom = JSON.parse(localStorage.getItem('zztetris_custom_presets') || '{}');
+			} catch (e) {}
+			const config = custom[name];
+			if (config) {
+				for (const key in config) {
+					const el = getEvalElement('eval' + key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(''));
+					if (el) {
+						if (el.type === 'checkbox') el.checked = config[key];
+						else el.value = config[key];
+					}
+				}
+			}
+		}
+
+		if (evalState.enabled) analyzeWithEngine(true);
+	});
+}
+
+function deleteCustomPreset() {
+	const select = getEvalElement('evalPreset');
+	if (!select) return;
+	const val = select.value;
+	if (!val.startsWith('custom_')) {
+		alert('Cannot delete built-in presets.');
+		return;
+	}
+
+	const name = val.replace('custom_', '');
+	if (!confirm('Are you sure you want to delete the preset "' + name + '"?')) return;
+
+	let custom = {};
+	try {
+		custom = JSON.parse(localStorage.getItem('zztetris_custom_presets') || '{}');
+	} catch (e) {}
+	
+	delete custom[name];
+	localStorage.setItem('zztetris_custom_presets', JSON.stringify(custom));
+	
+	select.value = 'default';
+	loadCustomPresets();
+	// Trigger default preset values
+	const event = new Event('change');
+	select.dispatchEvent(event);
 }

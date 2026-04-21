@@ -30,6 +30,41 @@
 		<title>ZZTetris</title>
 	</head>
 	<body style="background-color: #222; color: #fff">
+		<div class="sidebar-nav">
+			<div class="nav-section">
+				<h3>Navigation</h3>
+				<a class="button" target="_blank" href="https://github.com/swng/zztetris#readme">About</a>
+				<button class="button" target="popup" onclick="ctrlsPopup()">Game Settings</button>
+				<a class="button" href="index.html">Practice</a>
+				<a class="button" href="index.html?mode=cheese">Cheese</a>
+				<a class="button" href="index.html?mode=4w">4W</a>
+				<a class="button" href="index.html?mode=4w4res">4W 4Res</a>
+				<a class="button" href="index.html?mode=4w5res">4W 5Res</a>
+				<a class="button" href="index.html?mode=4w6res">4W 6Res</a>
+				<a class="button" href="index.html?mode=3w">3W</a>
+				<a class="button" href="index.html?mode=grav">Grav</a>
+				<a class="button" href="index.html?mode=pc">PC</a>
+			</div>
+
+			<div class="nav-section">
+				<h3>Practice Garbage</h3>
+				<div class="practice-row">
+					<label for="practiceLayers">Layers:</label>
+					<input type="number" id="practiceLayers" min="1" max="20" value="1" />
+				</div>
+				<div class="practice-row">
+					<label for="practiceMessiness">Messiness:</label>
+					<input type="range" id="practiceMessiness" min="0" max="100" value="0" />
+					<span id="messinessVal">0%</span>
+				</div>
+				<div class="practice-row">
+					<input type="checkbox" id="practicePermanent" />
+					<label for="practicePermanent">Permanent</label>
+				</div>
+				<button class="button" onclick="this.blur(); addPracticeGarbageUI();">Add Garbage</button>
+			</div>
+		</div>
+
 		<div id="mainLayout" class="main-layout">
 			<div class="import-export">
 				<div class="exports">
@@ -127,6 +162,18 @@
 					</div>
 
 					<div id="fusionParamsContainer" style="grid-column: 1 / -1; display: contents;">
+						<div class="eval-row eval-row--stack eval-row--full">
+							<label for="evalPreset">Engine Preset</label>
+							<div style="display: flex; gap: 4px;">
+								<select id="evalPreset" style="flex: 1;">
+									<option value="default">Default</option>
+									<option value="downstack">Downstack</option>
+									<option value="pc">PC</option>
+								</select>
+								<button class="button" style="padding: 2px 6px; margin: 0; color: #ff5555;" onclick="deleteCustomPreset()" title="Delete current custom preset">X</button>
+								<button class="button" style="padding: 2px 6px; margin: 0;" onclick="saveCustomPreset()">Save Custom</button>
+							</div>
+						</div>
 						<div class="eval-row eval-row--stack">
 							<label for="evalTimeBudgetMs">Time budget ms</label>
 							<input id="evalTimeBudgetMs" type="number" min="1" step="1" value="50" />
@@ -158,6 +205,26 @@
 						<div class="eval-row eval-row--stack">
 							<label for="evalB2bWeight">B2B weight</label>
 							<input id="evalB2bWeight" type="number" step="0.01" value="1.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalDownstackWeight">Downstack weight</label>
+							<input id="evalDownstackWeight" type="number" step="0.01" value="0.20" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalDownstackAvgHeightWeight">Downstack avg height weight</label>
+							<input id="evalDownstackAvgHeightWeight" type="number" step="0.01" value="0.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalDownstackMinHeightWeight">Downstack min height weight</label>
+							<input id="evalDownstackMinHeightWeight" type="number" step="0.01" value="-5.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<label for="evalPathDecay">Path decay</label>
+							<input id="evalPathDecay" type="number" step="0.01" min="0" max="1" value="1.0" />
+						</div>
+						<div class="eval-row eval-row--stack">
+							<input id="evalPcMode" type="checkbox" />
+							<label for="evalPcMode">PC Mode</label>
 						</div>
 						<div class="eval-row eval-row--stack">
 							<label for="evalSpinFullWeight">Spin Full bonus</label>
@@ -378,16 +445,7 @@
 			</div>
 		</div>
 
-		<a class="button" target="_blank" href="https://github.com/swng/zztetris#readme">About</a>
-		<button class="button" target="popup" onclick="ctrlsPopup()">Game Settings</button>
-        <a class="button">button that does nothing</a>
-        <a class="button" href="index.html">practice</a>
-        <a class="button" href="cheese.html">cheese</a>
-        <a class="button" href="4w.html">4w</a>
-        <a class="button" href="grav.html">grav</a>
-        <a class="button" href="pc.html">pc</a>
-
-        <div id = "tcc" style class = "tc">
+		<div id = "tcc" style class = "tc">
             <div>
                 <span id="tc-un"><svg><use xlink:href="./assets/icons/dark.svg#s-un"></use></svg></span>
 				<span id="tc-dr"><svg><use xlink:href="./assets/icons/dark.svg#s-r180"></use></svg></span>

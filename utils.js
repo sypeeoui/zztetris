@@ -63,3 +63,79 @@ function garbage(column, amount = 1) {
 	yPOS = spawn[1];
 	updateGhost();
 }
+
+function addPracticeGarbageUI() {
+	const layers = parseInt(document.getElementById('practiceLayers').value) || 1;
+	const messiness = parseInt(document.getElementById('practiceMessiness').value) || 0;
+	const permanent = document.getElementById('practicePermanent').checked;
+	// Rerandomize if permanent is enabled and we already have permanent rows
+	const hasPermanent = board.some(row => row.some(cell => cell.permanent));
+	addPracticeGarbage(layers, messiness, permanent, permanent && hasPermanent);
+}
+
+let lastHoleCol = -1;
+
+function addPracticeGarbage(layers, messiness, permanent, rerandomize = false) {
+	if (lastHoleCol === -1) lastHoleCol = Math.floor(Math.random() * 10);
+	
+	if (rerandomize) {
+		// Rerandomize existing permanent lines
+		board.forEach((row, rowIndex) => {
+			if (row.some(cell => cell.permanent)) {
+				// Randomize hole for this row
+				if (Math.random() * 100 < messiness) {
+					let nextCol = Math.floor(Math.random() * 10);
+					if (messiness > 0) {
+						while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
+					}
+					lastHoleCol = nextCol;
+				}
+				
+				let newRow = [];
+				for (let c = 0; c < 10; c++) {
+					if (c === lastHoleCol) {
+						newRow.push({ t: 0, c: '' });
+					} else {
+						newRow.push({ t: 1, c: 'X', permanent: true });
+					}
+				}
+				board[rowIndex] = newRow;
+			}
+		});
+	} else {
+		// Add new lines
+		for (let i = 0; i < layers; i++) {
+			if (Math.random() * 100 < messiness || i === 0 && lastHoleCol === -1) {
+				let nextCol = Math.floor(Math.random() * 10);
+				if (messiness > 0) {
+					while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
+				}
+				lastHoleCol = nextCol;
+			}
+			
+			let garbageRow = [];
+			for (let c = 0; c < 10; c++) {
+				if (c === lastHoleCol) {
+					garbageRow.push({ t: 0, c: '' });
+				} else {
+					let cell = { t: 1, c: 'X' };
+					if (permanent) cell.permanent = true;
+					garbageRow.push(cell);
+				}
+			}
+			
+			board.shift();
+			board.push(garbageRow);
+		}
+	}
+	
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	updateGhost();
+	if (typeof updateHistory === 'function') updateHistory();
+}
+
+// Update messiness value display
+$(document).on('input', '#practiceMessiness', function() {
+    $('#messinessVal').text($(this).val() + '%');
+});
