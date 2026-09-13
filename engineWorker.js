@@ -69,7 +69,7 @@ async function initEngine(engineType, baseUrl) {
         const mod = await import(baseUrl + 'wasm/fusion_engine.js');
         // Pass an explicit, versioned wasm URL so a previously cached binary
         // cannot be paired with this updated glue/worker.
-        await mod.default(baseUrl + 'wasm/fusion_engine_bg.wasm?v=2');
+        await mod.default(baseUrl + 'wasm/fusion_engine_bg.wasm?v=3');
         mod.init();
         engines.fusion.module = mod;
         engines.fusion.ready = true;
