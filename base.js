@@ -348,7 +348,7 @@ const wasmHelper = {
 
 	async ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./engineWorker.js');
+		this.worker = new Worker('./engineWorker.js?v=3');
 		this.worker.onmessage = (e) => {
 			const { type, result, error, requestId } = e.data;
 			if (type === 'result' || type === 'error') {
@@ -1144,6 +1144,15 @@ function preferredRouteKeyForMode(routes) {
 
 function isPcModeEnabled() {
 	return !!getEvalElement('evalPcMode')?.checked;
+}
+
+function currentBoardHeight() {
+	for (let i = 0; i < boardSize[1]; i++) {
+		if (board[i].some((cell) => cell.t == 1)) {
+			return boardSize[1] - i;
+		}
+	}
+	return 0;
 }
 
 function setRouteFollowModeFromSelection(routeKey) {
@@ -2025,7 +2034,12 @@ async function analyzeWithEngine(forceRefresh = false) {
 		rebuildEvaluationOverlay();
 		
 		if (error.message.includes('no PC solution found') || error.message.includes('no result')) {
-			setEvalStatus('No PC solution found within search depth.');
+			const height = currentBoardHeight();
+			if (height > 6) {
+				setEvalStatus(`No PC solution: board is ${height} rows high, PC search only covers up to 6.`, true);
+			} else {
+				setEvalStatus(`No PC found for this board/queue (height ${height}). Try the PC preset or a longer time budget.`, true);
+			}
 		} else {
 			setEvalStatus(`Evaluation failed: ${error.message}`, true);
 		}
