@@ -349,7 +349,7 @@ const wasmHelper = {
 
 	async ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./engineWorker.js?v=4');
+		this.worker = new Worker('./engineWorker.js?v=5');
 		this.worker.onmessage = (e) => {
 			const { type, result, error, requestId } = e.data;
 			if (type === 'result' || type === 'error') {
@@ -1351,11 +1351,15 @@ function setupBoardToMoves(boardStr) {
 	return moves;
 }
 
-function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold) {
+function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold, holdPiece) {
 	// A setup field is only useful if its 4 pieces can actually be placed in
 	// an order the queue allows. Model one hold slot and gravity: a piece can
 	// be dropped into its final cells only when they are free and the piece is
 	// supported from below.
+	//
+	// `holdPiece` seeds the hold slot with the piece already sitting there, so
+	// a setup that needs the held piece first is accepted (the user just presses
+	// hold). It is a piece character or null/undefined.
 	if (!Array.isArray(moves) || moves.length !== 4) return false;
 
 	const targets = moves.map((mv) => ({
@@ -1386,7 +1390,7 @@ function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold) {
 	};
 
 	const seen = new Set();
-	const stack = [{ queue: queuePieces.slice(), hold: null, mask: 0 }];
+	const stack = [{ queue: queuePieces.slice(), hold: holdPiece || null, mask: 0 }];
 	while (stack.length) {
 		const st = stack.pop();
 		const key = st.queue.join('') + '|' + (st.hold || '_') + '|' + st.mask;
@@ -1413,8 +1417,8 @@ function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold) {
 	return false;
 }
 
-function pcSetupIsBuildable(boardStr, queuePieces, allowHold) {
-	return pcSetupIsBuildableFromMoves(setupBoardToMoves(boardStr), queuePieces, allowHold);
+function pcSetupIsBuildable(boardStr, queuePieces, allowHold, holdPiece) {
+	return pcSetupIsBuildableFromMoves(setupBoardToMoves(boardStr), queuePieces, allowHold, holdPiece);
 }
 
 function buildPcSetupRoutes(pcCount) {
@@ -1432,11 +1436,18 @@ function buildPcSetupRoutes(pcCount) {
 	}
 	const firstFive = available.slice(0, 5);
 
+	// The held piece is available too, so a setup may use it instead of one of
+	// the five upcoming pieces. Enumerate 4-subsets of the full pool.
+	const pool = holdP ? [holdP, ...firstFive] : firstFive;
 	const combos = new Set();
-	for (let i = 0; i < firstFive.length; i++) {
-		const subset = firstFive.slice();
-		subset.splice(i, 1);
-		if (subset.length >= 4) combos.add(subset.slice(0, 4).sort().join(''));
+	for (let a = 0; a < pool.length; a++) {
+		for (let b = a + 1; b < pool.length; b++) {
+			for (let c = b + 1; c < pool.length; c++) {
+				for (let d = c + 1; d < pool.length; d++) {
+					combos.add([pool[a], pool[b], pool[c], pool[d]].sort().join(''));
+				}
+			}
+		}
 	}
 
 	const routes = [];
@@ -1447,7 +1458,7 @@ function buildPcSetupRoutes(pcCount) {
 		for (const setup of setups) {
 			const moves = setupBoardToMoves(setup.board || '');
 			if (!moves.length) continue;
-			if (!pcSetupIsBuildableFromMoves(moves, firstFive, true)) continue;
+			if (!pcSetupIsBuildableFromMoves(moves, firstFive, true, holdP)) continue;
 			const prob = parseFloat(String(setup.prob || '').replace('%', '').trim());
 			routes.push({
 				key: `pc_setup_${idx++}`,
@@ -3886,9 +3897,10 @@ function initPresets() {
 			getEvalElement('evalBoardWeight').value = 0;
 			// PC search needs depth to cover the board/queue
 			getEvalElement('evalDepth').value = 20;
-			// Iterative deepening needs a little more headroom than the default
-			// 50ms so the smallest PC can actually be found.
-			getEvalElement('evalTimeBudgetMs').value = 250;
+			// The PC search is an explicit action, so it can afford a larger
+			// budget than live evaluation. Iterative deepening returns the
+			// smallest clear it can prove within this window.
+			getEvalElement('evalTimeBudgetMs').value = 1000;
 			}
  else if (val.startsWith('custom_')) {
 			const name = val.replace('custom_', '');

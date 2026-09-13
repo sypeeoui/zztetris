@@ -36,7 +36,7 @@ async function initEngine(engineType, baseUrl) {
         const mod = await import(baseUrl + 'wasm/direct_cobra_copy.js');
         // Pass an explicit, versioned wasm URL so a previously cached binary
         // cannot be paired with this updated glue/worker.
-        await mod.default(baseUrl + 'wasm/direct_cobra_copy_bg.wasm?v=4');
+        await mod.default(baseUrl + 'wasm/direct_cobra_copy_bg.wasm?v=5');
         mod.init();
         engines.fusion.module = mod;
         engines.fusion.ready = true;
