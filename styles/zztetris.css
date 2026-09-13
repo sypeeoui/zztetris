@@ -322,3 +322,82 @@ footer {
 	margin-top: 4px;
 	grid-column: 1 / -1;
 }
+
+.piece-editor-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.piece-editor {
+	background: #2a2a2a;
+	border: 2px solid #3d3d3d;
+	border-radius: 8px;
+	padding: 16px;
+	min-width: 300px;
+	max-width: 90vw;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.piece-editor-title {
+	margin: 0;
+	font-size: 16px;
+	color: #fff;
+}
+
+.piece-editor-hint {
+	font-size: 11px;
+	color: #9a9a9a;
+}
+
+.piece-editor-input {
+	font-family: monospace;
+	font-size: 18px;
+	letter-spacing: 2px;
+	padding: 8px;
+	background: #1a1a1a;
+	color: #fff;
+	border: 1px solid #555;
+	border-radius: 4px;
+	text-transform: uppercase;
+	outline: none;
+}
+
+.piece-editor-input:focus {
+	border-color: #4caf50;
+}
+
+.piece-editor-pieces {
+	display: flex;
+	gap: 6px;
+	justify-content: center;
+	flex-wrap: wrap;
+}
+
+.piece-editor-piece {
+	width: 36px;
+	height: 36px;
+	font-weight: bold;
+	font-size: 16px;
+	background: #1a1a1a;
+	border: 1px solid #555;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.piece-editor-piece:hover {
+	border-color: #4caf50;
+}
+
+.piece-editor-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}

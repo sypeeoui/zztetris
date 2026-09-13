@@ -538,37 +538,118 @@ function paintbucketColor() {
 }
 
 // queue
-document.getElementById('n').addEventListener('click', (event) => {
-	let QueueInput = prompt('Queue', piece + queue.join('')).toUpperCase();
-	// ok there's probably a regex way to do this but...
-	temp = [];
-	for (i = 0; i < QueueInput.length; i++) {
-		//sanitization
-		if ('SZLJIOT'.includes(QueueInput[i])) temp.push(QueueInput[i]);
-	}
-	if (temp.length > 0) {
-		temp.push('|'); // could probably insert one every 7 pieces but am too lazy
-		queue = temp;
-		newPiece();
-	}
-	updateHistory();
-});
+document.getElementById('n').addEventListener('click', () => openPieceEditor('queue'));
 
 // hold
-document.getElementById('h').addEventListener('click', (event) => {
-	let HoldInput = prompt('Hold', holdP).toUpperCase();
-	if (HoldInput.length == 0) {
-		holdP = '';
+document.getElementById('h').addEventListener('click', () => openPieceEditor('hold'));
+
+var pieceEditorEl = null;
+
+function ensurePieceEditor() {
+	if (pieceEditorEl) return pieceEditorEl;
+
+	const overlay = document.createElement('div');
+	overlay.className = 'piece-editor-overlay';
+	overlay.style.display = 'none';
+	overlay.innerHTML = `
+		<div class="piece-editor">
+			<h3 class="piece-editor-title"></h3>
+			<input type="text" class="piece-editor-input" autocomplete="off" spellcheck="false" />
+			<div class="piece-editor-hint"></div>
+			<div class="piece-editor-pieces"></div>
+			<div class="piece-editor-actions">
+				<button type="button" class="button piece-editor-apply">Apply</button>
+				<button type="button" class="button piece-editor-clear">Clear</button>
+				<button type="button" class="button piece-editor-cancel">Cancel</button>
+			</div>
+		</div>`;
+	document.body.appendChild(overlay);
+
+	const piecesEl = overlay.querySelector('.piece-editor-pieces');
+	['I', 'J', 'L', 'O', 'S', 'T', 'Z'].forEach((p) => {
+		const btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'piece-editor-piece';
+		btn.textContent = p;
+		btn.dataset.piece = p;
+		btn.style.color = color[p] || '#fff';
+		piecesEl.appendChild(btn);
+	});
+
+	overlay.addEventListener('mousedown', (e) => {
+		if (e.target === overlay) closePieceEditor();
+	});
+
+	pieceEditorEl = overlay;
+	return overlay;
+}
+
+function closePieceEditor() {
+	if (pieceEditorEl) pieceEditorEl.style.display = 'none';
+}
+
+function openPieceEditor(kind) {
+	const overlay = ensurePieceEditor();
+	const input = overlay.querySelector('.piece-editor-input');
+	const title = overlay.querySelector('.piece-editor-title');
+	const hint = overlay.querySelector('.piece-editor-hint');
+	const isHold = kind === 'hold';
+
+	overlay.dataset.kind = kind;
+	title.textContent = isHold ? 'Edit Hold' : 'Edit Queue';
+	hint.textContent = isHold
+		? 'Enter a single piece (or leave empty).'
+		: 'Pieces I J L O S T Z; use | to mark bag boundaries.';
+	input.value = isHold ? holdP || '' : (piece || '') + queue.join('');
+	overlay.style.display = 'flex';
+
+	input.onkeydown = (e) => {
+		if (e.key == 'Enter') {
+			e.preventDefault();
+			applyPieceEditor();
+		} else if (e.key == 'Escape') {
+			e.preventDefault();
+			closePieceEditor();
+		}
+	};
+
+	overlay.querySelector('.piece-editor-apply').onclick = applyPieceEditor;
+	overlay.querySelector('.piece-editor-clear').onclick = () => {
+		input.value = '';
+		input.focus();
+	};
+	overlay.querySelector('.piece-editor-cancel').onclick = closePieceEditor;
+	overlay.querySelectorAll('.piece-editor-piece').forEach((btn) => {
+		btn.onclick = () => {
+			if (isHold) input.value = btn.dataset.piece;
+			else input.value += btn.dataset.piece;
+			input.focus();
+		};
+	});
+
+	setTimeout(() => input.focus(), 0);
+}
+
+function applyPieceEditor() {
+	if (!pieceEditorEl) return;
+	const kind = pieceEditorEl.dataset.kind;
+	const raw = (pieceEditorEl.querySelector('.piece-editor-input').value || '').toUpperCase();
+
+	if (kind == 'hold') {
+		const ch = raw.split('').find((c) => 'SZLJIOT'.includes(c));
+		holdP = ch || '';
 		updateQueue();
-		return;
+	} else {
+		const cleaned = raw.split('').filter((ch) => 'SZLJIOT|'.includes(ch));
+		const hasPiece = cleaned.some((ch) => ch != '|');
+		if (hasPiece) {
+			queue = cleaned;
+			newPiece();
+		}
+		updateHistory();
 	}
-	HoldInput = HoldInput[0]; // make sure it's just 1 character
-	//sanitization
-	if ('SZLJIOT'.includes(HoldInput)) {
-		holdP = HoldInput;
-		updateQueue();
-	}
-});
+	closePieceEditor();
+}
 
 // Mobile buttons
 const ua = navigator.userAgent;
@@ -1153,6 +1234,219 @@ function currentBoardHeight() {
 		}
 	}
 	return 0;
+}
+
+var pcSetupData = null;
+var pcSetupDataPromise = null;
+
+function loadPcSetupData() {
+	if (pcSetupData) return Promise.resolve(pcSetupData);
+	if (pcSetupDataPromise) return pcSetupDataPromise;
+
+	pcSetupDataPromise = fetch('./pc_setups.json', { cache: 'no-store' })
+		.then((res) => (res.ok ? res.json() : null))
+		.then((data) => {
+			pcSetupData = data || {};
+			return pcSetupData;
+		})
+		.catch(() => {
+			pcSetupData = {};
+			return pcSetupData;
+		});
+
+	return pcSetupDataPromise;
+}
+
+function currentBagPieces() {
+	// Remaining pieces in the current bag, active piece first. Bag separators
+	// ('|') delimit the current bag in the queue.
+	const bag = [];
+	if (piece) bag.push(piece);
+	for (let i = 0; i < queue.length; i++) {
+		if (queue[i] == '|') break;
+		bag.push(queue[i]);
+	}
+	return bag;
+}
+
+function pcSetupCountForBag(bagPieces) {
+	// The best-chance-field list is grouped by how far into the opening we
+	// are; a full bag (7 left) maps to count 1 and an empty bag to count 8.
+	const remaining = bagPieces.length;
+	return Math.min(8, Math.max(1, 8 - remaining));
+}
+
+function setupBoardToCells(boardStr) {
+	// boardStr is 4 rows x 10 cols, row 0 is the top row. Engine y=0 is the
+	// bottom, so the top row maps to y=3.
+	const cells = [];
+	if (!boardStr) return cells;
+	for (let r = 0; r < 4; r++) {
+		for (let c = 0; c < 10; c++) {
+			const ch = boardStr[r * 10 + c];
+			if (!ch || ch == '_') continue;
+			cells.push({ x: c, y: 3 - r, piece: ch });
+		}
+	}
+	return cells;
+}
+
+function partitionPieceCells(pieceChar, cells) {
+	// Exact-cover the cells with copies of the given tetromino. A letter may
+	// appear several times (e.g. "IIII"), and pieces can interlock, so a greedy
+	// peel is not enough; backtrack on the first uncovered cell.
+	const base = pieceBaseCoords[pieceChar];
+	if (!base) return null;
+	if (cells.length == 0) return [];
+	if (cells.length % base.length != 0) return null;
+
+	const first = cells[0];
+	for (let rotation = 0; rotation < 4; rotation++) {
+		const rotated = base.map(([x, y]) => rotateCoordForEngine(rotation, x, y));
+		for (const rc of rotated) {
+			const dx = first.x - rc.x;
+			const dy = first.y - rc.y;
+			const matched = [];
+			let ok = true;
+			for (const rcell of rotated) {
+				const cell = cells.find(
+					(c) => c.x == rcell.x + dx && c.y == rcell.y + dy && !matched.includes(c)
+				);
+				if (!cell) {
+					ok = false;
+					break;
+				}
+				matched.push(cell);
+			}
+			if (!ok) continue;
+
+			const remaining = cells.filter((c) => !matched.includes(c));
+			const rest = partitionPieceCells(pieceChar, remaining);
+			if (rest) {
+				return [
+					{ move: { piece: charToEnginePiece[pieceChar], rotation, x: dx, y: dy }, cells: matched },
+					...rest,
+				];
+			}
+		}
+	}
+	return null;
+}
+
+function setupBoardToMoves(boardStr) {
+	const pools = {};
+	for (const cell of setupBoardToCells(boardStr)) {
+		(pools[cell.piece] = pools[cell.piece] || []).push(cell);
+	}
+
+	const moves = [];
+	for (const ch of Object.keys(pools)) {
+		const parts = partitionPieceCells(ch, pools[ch]);
+		if (!parts) return [];
+		for (const part of parts) moves.push(part.move);
+	}
+	// Place bottom rows first so the overlay simulation never floats a piece.
+	moves.sort((a, b) => a.y - b.y || a.x - b.x);
+	return moves;
+}
+
+function buildPcSetupRoutes(pcCount) {
+	const pcSet = (pcSetupData || {})[String(pcCount)] || {};
+	const bagPieces = currentBagPieces();
+
+	// The first five available pieces (active piece first), crossing into the
+	// next bag if the current bag is short.
+	const available = [];
+	if (piece) available.push(piece);
+	for (const p of queue) {
+		if (p == '|') continue;
+		available.push(p);
+		if (available.length >= 5) break;
+	}
+	const firstFive = available.slice(0, 5);
+
+	const combos = new Set();
+	for (let i = 0; i < firstFive.length; i++) {
+		const subset = firstFive.slice();
+		subset.splice(i, 1);
+		if (subset.length >= 4) combos.add(subset.slice(0, 4).sort().join(''));
+	}
+
+	const routes = [];
+	let idx = 0;
+	for (const combo of combos) {
+		const setups = pcSet[combo];
+		if (!Array.isArray(setups)) continue;
+		for (const setup of setups) {
+			const moves = setupBoardToMoves(setup.board || '');
+			if (!moves.length) continue;
+			const prob = parseFloat(String(setup.prob || '').replace('%', '').trim());
+			routes.push({
+				key: `pc_setup_${idx++}`,
+				label: `PC ${combo}${Number.isFinite(prob) ? ` ${prob.toFixed(1)}%` : ''}`,
+				moves,
+				score: Number.isFinite(prob) ? prob : 0,
+				probability: Number.isFinite(prob) ? prob / 100 : null,
+				hold_used: false,
+				setup: { combo, board: setup.board, prob },
+			});
+		}
+	}
+
+	routes.sort((a, b) => b.score - a.score);
+	return { routes: routes.slice(0, 12), bagPieces, pcCount, firstFive };
+}
+
+function consumeQueuePieces(usedPieces) {
+	const seq = [];
+	if (piece) seq.push(piece);
+	for (const p of queue) seq.push(p);
+
+	for (const p of usedPieces) {
+		const i = seq.indexOf(p);
+		if (i >= 0) seq.splice(i, 1);
+	}
+
+	while (seq.length < 10) {
+		const shuf = names.shuffle();
+		for (const p of shuf) seq.push(p);
+		seq.push('|');
+	}
+	if (seq[0] == '|') seq.shift();
+	piece = seq.shift();
+	queue = seq;
+}
+
+function applyPcSetup(route) {
+	if (!route || !route.setup) return false;
+	const cells = setupBoardToCells(route.setup.board);
+	if (!cells.length) return false;
+
+	for (let i = 0; i < boardSize[1]; i++) {
+		for (let x = 0; x < boardSize[0]; x++) {
+			board[i][x] = { t: 0, c: '' };
+		}
+	}
+	for (const cell of cells) {
+		const row = boardSize[1] - 1 - cell.y;
+		if (row < 0 || row >= boardSize[1]) continue;
+		board[row][cell.x] = { t: 1, c: cell.piece };
+	}
+
+	consumeQueuePieces(route.setup.combo.split(''));
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	rot = 0;
+	clearActive();
+	checkTopOut();
+	updateGhost();
+	setShape();
+	updateQueue();
+	updateHistory();
+
+	setEvalStatus(`Applied PC setup ${route.setup.combo}.`);
+	if (evalState.enabled) analyzeWithEngine(true);
+	return true;
 }
 
 function setRouteFollowModeFromSelection(routeKey) {
@@ -1749,13 +2043,17 @@ function renderRoutesList() {
 	routes.forEach((route) => {
 		const item = document.createElement('div');
 		item.className = 'eval-route-item';
-		item.title = 'Double-click to play this route';
+		item.title = route.setup ? 'Double-click to apply this PC setup' : 'Double-click to play this route';
 		if (route.key == evalState.selectedRouteKey) {
 			item.classList.add('eval-route-item--active');
 		}
-		const scoreText = `score ${formatEvalNumber(route.score)}`;
-		const probText = typeof route.probability == 'number' ? `, p ${(route.probability * 100).toFixed(1)}%` : '';
-		item.textContent = `${route.label} | ${scoreText}${probText}`;
+		if (route.setup) {
+			item.textContent = route.label;
+		} else {
+			const scoreText = `score ${formatEvalNumber(route.score)}`;
+			const probText = typeof route.probability == 'number' ? `, p ${(route.probability * 100).toFixed(1)}%` : '';
+			item.textContent = `${route.label} | ${scoreText}${probText}`;
+		}
 
 		item.addEventListener('mouseenter', () => {
 			evalState.hoverRouteKey = route.key;
@@ -1782,7 +2080,11 @@ function renderRoutesList() {
 			renderRoutesList();
 			rebuildEvaluationOverlay();
 			const selectedRoute = routes.find((r) => r.key == evalState.selectedRouteKey) || route;
-			playRoute(selectedRoute);
+			if (selectedRoute.setup) {
+				applyPcSetup(selectedRoute);
+			} else {
+				playRoute(selectedRoute);
+			}
 		});
 
 		listEl.appendChild(item);
@@ -1911,6 +2213,68 @@ async function analyzeWithEngine(forceRefresh = false) {
 	const pieceId = charToEnginePiece[piece];
 	if (pieceId === undefined) {
 		setEvalStatus('No active piece to analyze.', true);
+		return;
+	}
+
+	// On an empty board a generic PC search has nothing to bite on, so fall
+	// back to the known high-probability PC setup list. The current bag (from
+	// the queue separators) selects which opening table to consult.
+	if (isPcModeEnabled() && currentBoardHeight() == 0) {
+		evalState.inFlight = true;
+		evalState.lastRequestAt = Date.now();
+		setEvalStatus('Looking up PC setups for an empty board...');
+		try {
+			await loadPcSetupData();
+			const bagPieces = currentBagPieces();
+			const pcCount = pcSetupCountForBag(bagPieces);
+			let result = buildPcSetupRoutes(pcCount);
+			let usedCount = pcCount;
+
+			if (!result.routes.length) {
+				// Nothing for the derived count; scan every opening table.
+				const all = [];
+				for (let c = 1; c <= 8; c++) {
+					const r = buildPcSetupRoutes(c);
+					for (const route of r.routes) {
+						route.label = `${route.label} (bag ${c})`;
+						all.push(route);
+					}
+				}
+				all.sort((a, b) => b.score - a.score);
+				result = { routes: all.slice(0, 12), bagPieces, pcCount: null };
+				usedCount = null;
+			}
+
+			const routes = result.routes;
+			evalState.latestData = {
+				raw: { pc_setups: true },
+				routes,
+				score: routes.length ? routes[0].score : null,
+			};
+			evalState.lastAppliedHash = stateHash;
+			renderRoutesList();
+			rebuildEvaluationOverlay();
+
+			if (!routes.length) {
+				setEvalStatus(
+					`No PC setup found for the current bag (${bagPieces.length} piece(s) left: ${bagPieces.join('') || '-'}).`,
+					true
+				);
+			} else {
+				const where = usedCount ? `bag count ${usedCount}` : 'all bag counts';
+				setEvalStatus(
+					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Double-click a setup to apply it.`
+				);
+			}
+		} catch (error) {
+			evalState.overlayCells = [];
+			evalState.latestData = null;
+			renderRoutesList();
+			rebuildEvaluationOverlay();
+			setEvalStatus(`PC setup lookup failed: ${error.message}`, true);
+		} finally {
+			evalState.inFlight = false;
+		}
 		return;
 	}
 
@@ -2492,6 +2856,7 @@ function initEvaluationUi() {
 	applyCompactOptionsVisibility();
 	syncEvalChainInputsFromGame();
 	initPresets();
+	loadPcSetupData();
 	setEvalStatus('Evaluation is disabled.');
 	evalUiReady = true;
 }
