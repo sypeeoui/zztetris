@@ -33,10 +33,10 @@ async function initEngine(engineType, baseUrl) {
     if (engines[engineType]?.ready) return;
 
     if (engineType === 'fusion') {
-        const mod = await import(baseUrl + 'wasm/direct_cobra_copy.js');
+        const mod = await import(baseUrl + 'wasm/fusion_engine.js');
         // Pass an explicit, versioned wasm URL so a previously cached binary
         // cannot be paired with this updated glue/worker.
-        await mod.default(baseUrl + 'wasm/direct_cobra_copy_bg.wasm?v=5');
+        await mod.default(baseUrl + 'wasm/fusion_engine_bg.wasm?v=1');
         mod.init();
         engines.fusion.module = mod;
         engines.fusion.ready = true;

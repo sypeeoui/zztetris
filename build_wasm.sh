@@ -13,9 +13,9 @@ echo "Building Fusion engine..."
 cd engines/fusion
 wasm-pack build --target web --out-dir pkg_wasm -- --no-default-features --features wasm
 cd ../..
-# Keep original names so the glue code JS can find the WASM binary
-cp engines/fusion/pkg_wasm/direct_cobra_copy.js wasm/direct_cobra_copy.js
-cp engines/fusion/pkg_wasm/direct_cobra_copy_bg.wasm wasm/direct_cobra_copy_bg.wasm
+# Upstream package is `fusion-engine`; the worker imports these names.
+cp engines/fusion/pkg_wasm/fusion_engine.js wasm/fusion_engine.js
+cp engines/fusion/pkg_wasm/fusion_engine_bg.wasm wasm/fusion_engine_bg.wasm
 
 echo "Building Falcon-2 engine..."
 cd engines/falcon-2
