@@ -1351,6 +1351,72 @@ function setupBoardToMoves(boardStr) {
 	return moves;
 }
 
+function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold) {
+	// A setup field is only useful if its 4 pieces can actually be placed in
+	// an order the queue allows. Model one hold slot and gravity: a piece can
+	// be dropped into its final cells only when they are free and the piece is
+	// supported from below.
+	if (!Array.isArray(moves) || moves.length !== 4) return false;
+
+	const targets = moves.map((mv) => ({
+		piece: enginePieceToChar[mv.piece],
+		cells: getMoveCells(mv),
+	}));
+	const targetKeys = targets.map((t) => t.cells.map((c) => c.y * 10 + c.x));
+	const fullMask = (1 << targets.length) - 1;
+
+	const occupiedForMask = (mask) => {
+		const occ = new Set();
+		for (let i = 0; i < targets.length; i++) {
+			if (mask & (1 << i)) {
+				for (const k of targetKeys[i]) occ.add(k);
+			}
+		}
+		return occ;
+	};
+
+	const canPlace = (target, occ) => {
+		for (const c of target.cells) {
+			if (occ.has(c.y * 10 + c.x)) return false;
+		}
+		for (const c of target.cells) {
+			if (c.y === 0 || occ.has((c.y - 1) * 10 + c.x)) return true;
+		}
+		return false;
+	};
+
+	const seen = new Set();
+	const stack = [{ queue: queuePieces.slice(), hold: null, mask: 0 }];
+	while (stack.length) {
+		const st = stack.pop();
+		const key = st.queue.join('') + '|' + (st.hold || '_') + '|' + st.mask;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		if (st.mask === fullMask) return true;
+
+		const occ = occupiedForMask(st.mask);
+		const current = st.queue.length ? st.queue[0] : null;
+		if (current) {
+			for (let i = 0; i < targets.length; i++) {
+				if ((st.mask & (1 << i)) === 0 && targets[i].piece === current && canPlace(targets[i], occ)) {
+					stack.push({ queue: st.queue.slice(1), hold: st.hold, mask: st.mask | (1 << i) });
+				}
+			}
+		}
+		if (allowHold && current) {
+			const nq = st.queue.slice(1);
+			const nh = current;
+			if (st.hold != null) nq.unshift(st.hold);
+			stack.push({ queue: nq, hold: nh, mask: st.mask });
+		}
+	}
+	return false;
+}
+
+function pcSetupIsBuildable(boardStr, queuePieces, allowHold) {
+	return pcSetupIsBuildableFromMoves(setupBoardToMoves(boardStr), queuePieces, allowHold);
+}
+
 function buildPcSetupRoutes(pcCount) {
 	const pcSet = (pcSetupData || {})[String(pcCount)] || {};
 	const bagPieces = currentBagPieces();
@@ -1381,6 +1447,7 @@ function buildPcSetupRoutes(pcCount) {
 		for (const setup of setups) {
 			const moves = setupBoardToMoves(setup.board || '');
 			if (!moves.length) continue;
+			if (!pcSetupIsBuildableFromMoves(moves, firstFive, true)) continue;
 			const prob = parseFloat(String(setup.prob || '').replace('%', '').trim());
 			routes.push({
 				key: `pc_setup_${idx++}`,
