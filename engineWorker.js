@@ -68,12 +68,9 @@ async function findBestMove(engineType, payload) {
             search: overrides
         };
         const res = find_best_move(board, pieceId, frame);
-        return res ? {
-            best_move: res,
-            score: res.score,
-            hold_used: res.hold_used,
-            pv: [res]
-        } : null;
+        // Fusion now returns { best_move, pv, score, hold_used } so the full
+        // principal variation (the whole PC route in pc_mode) reaches the UI.
+        return res || null;
     } 
     
     if (engineType === 'falcon') {

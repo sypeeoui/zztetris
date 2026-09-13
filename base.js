@@ -1142,6 +1142,10 @@ function preferredRouteKeyForMode(routes) {
 	return routes[0].key;
 }
 
+function isPcModeEnabled() {
+	return !!getEvalElement('evalPcMode')?.checked;
+}
+
 function setRouteFollowModeFromSelection(routeKey) {
 	if (routeKey == 'best_pv') {
 		evalState.routeFollowMode = 'pv';
@@ -2478,24 +2482,53 @@ function initEvaluationUi() {
 	evalUiReady = true;
 }
 
-function drawEvaluationOverlay() {
+function drawEvaluationOverlay(phase = 'all') {
 	if (!evalState.enabled || !evalState.overlayCells.length) return;
 
-	for (const cell of evalState.overlayCells) {
+	const pcMode = isPcModeEnabled();
+	const drawShadows = phase === 'all' || phase === 'shadows';
+	const drawNext = phase === 'all' || phase === 'next';
+
+	const drawOverlayCell = (cell, isNext) => {
 		const boardRowIndex = boardSize[1] - 1 - cell.y;
 		const drawY = boardRowIndex - hiddenRows + 2;
-		if (!inRange(drawY, 0, boardSize[1])) continue;
+		if (!inRange(drawY, 0, boardSize[1])) return;
 
-		const fade = Math.pow(0.58, cell.step);
-		const fillAlpha = Math.max(0.03, 0.34 * fade);
-		const strokeAlpha = Math.max(0.08, 0.86 * fade);
 		const pieceHex = color[cell.piece] || '#ffffff';
-		ctx.fillStyle = hexToRgba(pieceHex, fillAlpha);
-		ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
 
-		ctx.strokeStyle = hexToRgba(pieceHex, strokeAlpha);
-		ctx.lineWidth = 1.5;
-		ctx.strokeRect(cell.x * cellSize + 2, drawY * cellSize + 2, cellSize - 4, cellSize - 4);
+		if (isNext) {
+			// The placement to make right now: bright and clearly outlined.
+			ctx.fillStyle = hexToRgba(pieceHex, 0.7);
+			ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
+
+			ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+			ctx.lineWidth = 2;
+			ctx.strokeRect(cell.x * cellSize + 1.5, drawY * cellSize + 1.5, cellSize - 3, cellSize - 3);
+		} else {
+			// Follow-up pieces of the route: faint shadows that recede with
+			// each step so the ordering stays readable.
+			const fade = Math.pow(0.62, Math.max(0, cell.step - 1));
+			ctx.fillStyle = hexToRgba(pieceHex, Math.max(0.04, 0.18 * fade));
+			ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
+
+			ctx.strokeStyle = hexToRgba(pieceHex, Math.max(0.1, 0.45 * fade));
+			ctx.lineWidth = 1;
+			ctx.strokeRect(cell.x * cellSize + 2, drawY * cellSize + 2, cellSize - 4, cellSize - 4);
+		}
+	};
+
+	// In PC mode every piece of the route is shown; the follow-ups are drawn
+	// as shadows behind the stack and the next placement on top of it. Outside
+	// PC mode only the immediate move is shown.
+	if (pcMode && drawShadows) {
+		for (const cell of evalState.overlayCells) {
+			if (cell.step !== 0) drawOverlayCell(cell, false);
+		}
+	}
+	if (drawNext) {
+		for (const cell of evalState.overlayCells) {
+			if (cell.step === 0) drawOverlayCell(cell, true);
+		}
 	}
 }
 
@@ -3111,7 +3144,8 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		ctx.clearRect(0, 0, boardSize[0] * cellSize, boardSize[1] * cellSize);
 		ctx.fillStyle = pattern;
 		ctx.fillRect(0, 0, boardSize[0] * cellSize, boardSize[1] * cellSize);
-		drawEvaluationOverlay();
+		// Route shadows go behind the stack, the next placement on top of it.
+		drawEvaluationOverlay('shadows');
 
 		board.map((y, i) => {
 			y.map((x, ii) => {
@@ -3123,6 +3157,8 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				}
 			});
 		});
+
+		drawEvaluationOverlay('next');
 		window.requestAnimationFrame(render);
 	}
 	/*
@@ -3311,6 +3347,9 @@ function initPresets() {
 			getEvalElement('evalBoardWeight').value = 0;
 			// PC search needs depth to cover the board/queue
 			getEvalElement('evalDepth').value = 20;
+			// Iterative deepening needs a little more headroom than the default
+			// 50ms so the smallest PC can actually be found.
+			getEvalElement('evalTimeBudgetMs').value = 250;
 			}
  else if (val.startsWith('custom_')) {
 			const name = val.replace('custom_', '');
