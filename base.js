@@ -333,6 +333,7 @@ var evalState = {
 	playbackInputsPerSecond: 2,
 	latestData: null,
 	overlayCells: [],
+	pcSetupPlan: null,
 };
 var evalControlApi = null;
 
@@ -1449,6 +1450,59 @@ function applyPcSetup(route) {
 	return true;
 }
 
+function pcSetupPlanMatchesBoard(plan) {
+	if (!plan || !plan.cells || !plan.cells.length) return false;
+	const setupSet = new Set(plan.cells.map((c) => c.y * 10 + c.x));
+	for (let i = 0; i < boardSize[1]; i++) {
+		for (let x = 0; x < boardSize[0]; x++) {
+			if (board[i][x].t == 1) {
+				const y = boardSize[1] - 1 - i;
+				if (!setupSet.has(y * 10 + x)) return false;
+			}
+		}
+	}
+	return true;
+}
+
+function computePcSetupPlanOverlay(plan) {
+	// Board cells already placed, keyed by engine coordinates.
+	const placed = new Set();
+	for (let i = 0; i < boardSize[1]; i++) {
+		for (let x = 0; x < boardSize[0]; x++) {
+			if (board[i][x].t == 1) placed.add((boardSize[1] - 1 - i) * 10 + x);
+		}
+	}
+
+	// Keep only the not-yet-placed pieces of the setup; the next one is bright.
+	const overlay = [];
+	let step = 0;
+	for (const move of plan.moves) {
+		const remaining = getMoveCells(move).filter((c) => !placed.has(c.y * 10 + c.x));
+		if (!remaining.length) continue;
+		for (const cell of remaining) {
+			overlay.push({ x: cell.x, y: cell.y, piece: cell.piece, step });
+		}
+		step++;
+	}
+	return overlay;
+}
+
+function armPcSetupPlan(route) {
+	if (!route || !route.setup) return;
+	const cells = setupBoardToCells(route.setup.board);
+	if (!cells.length) return;
+	evalState.pcSetupPlan = {
+		combo: route.setup.combo,
+		board: route.setup.board,
+		cells,
+		moves: route.moves,
+	};
+}
+
+function clearPcSetupPlan() {
+	evalState.pcSetupPlan = null;
+}
+
 function setRouteFollowModeFromSelection(routeKey) {
 	if (routeKey == 'best_pv') {
 		evalState.routeFollowMode = 'pv';
@@ -2066,6 +2120,8 @@ function renderRoutesList() {
 		});
 
 		item.addEventListener('click', () => {
+			if (route.setup) armPcSetupPlan(route);
+			else clearPcSetupPlan();
 			setRouteFollowModeFromSelection(route.key);
 			evalState.selectedRouteKey = preferredRouteKeyForMode(routes);
 			evalState.hoverRouteKey = evalState.selectedRouteKey;
@@ -2179,6 +2235,20 @@ function updateEvaluationText() {
 }
 
 function rebuildEvaluationOverlay() {
+	// While the player follows a 4-piece PC setup, keep showing the pieces that
+	// are still to come as shadows instead of dropping the overlay.
+	if (evalState.pcSetupPlan) {
+		if (pcSetupPlanMatchesBoard(evalState.pcSetupPlan)) {
+			const planOverlay = computePcSetupPlanOverlay(evalState.pcSetupPlan);
+			if (planOverlay.length) {
+				evalState.overlayCells = planOverlay;
+				updateEvaluationText();
+				return;
+			}
+		}
+		evalState.pcSetupPlan = null;
+	}
+
 	const data = evalState.latestData;
 	if (!data || !data.routes?.length) {
 		evalState.overlayCells = [];
@@ -2194,6 +2264,20 @@ function rebuildEvaluationOverlay() {
 
 async function analyzeWithEngine(forceRefresh = false) {
 	if (evalState.inFlight) return;
+
+	// A live 4-piece setup plan owns the overlay until the player deviates from
+	// it or completes it, so don't overwrite the shadows with a fresh search.
+	if (evalState.pcSetupPlan) {
+		if (pcSetupPlanMatchesBoard(evalState.pcSetupPlan)) {
+			const planOverlay = computePcSetupPlanOverlay(evalState.pcSetupPlan);
+			if (planOverlay.length) {
+				evalState.overlayCells = planOverlay;
+				updateEvaluationText();
+				return;
+			}
+		}
+		evalState.pcSetupPlan = null;
+	}
 
 	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
 	const apiBaseInput = getEvalElement('evalApiBase');
@@ -2680,6 +2764,7 @@ function setEvaluationMode(enabled) {
 	if (!enabled) {
 		evalState.overlayCells = [];
 		evalState.hoverRouteKey = '';
+		clearPcSetupPlan();
 		setEvalStatus('Evaluation is disabled.');
 	}
 	applyCompactOptionsVisibility();
@@ -2698,13 +2783,28 @@ function initEvaluationUi() {
 	const reachabilityBtn = getEvalElement('evalReachabilityBtn');
 	const apiBaseInput = getEvalElement('evalApiBase');
 	const engineTypeSelect = getEvalElement('evalEngineType');
-	const falconWeightsContainer = getEvalElement('falconWeightsContainer');
-	const fusionParamsContainer = getEvalElement('fusionParamsContainer');
 	const beamWidthInput = getEvalElement('evalBeamWidth');
 	const depthInput = getEvalElement('evalDepth');
 	const useWasmCheckbox = getEvalElement('evalUseWasm');
 	const apiBaseContainer = getEvalElement('apiBaseContainer');
-	const coldClearParamsContainer = getEvalElement('coldClearParamsContainer');
+
+	const applyEngineVisibility = (type) => {
+		document.querySelectorAll('.fusion-only').forEach((el) => {
+			el.style.display = type === 'fusion' ? '' : 'none';
+		});
+		document.querySelectorAll('.falcon-only').forEach((el) => {
+			el.style.display = type === 'falcon' ? '' : 'none';
+		});
+		document.querySelectorAll('.cold-clear-only').forEach((el) => {
+			el.style.display = type === 'cold-clear' ? '' : 'none';
+		});
+
+		// Beam width / depth are hidden for Cold Clear.
+		const beamRow = beamWidthInput?.closest('.eval-row');
+		const depthRow = depthInput?.closest('.eval-row');
+		if (beamRow) beamRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
+		if (depthRow) depthRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
+	};
 
 	if (useWasmCheckbox && apiBaseContainer) {
 		useWasmCheckbox.addEventListener('change', () => {
@@ -2717,18 +2817,10 @@ function initEvaluationUi() {
 		}
 	}
 
-	if (engineTypeSelect && falconWeightsContainer && fusionParamsContainer && coldClearParamsContainer) {
+	if (engineTypeSelect) {
 		engineTypeSelect.addEventListener('change', () => {
 			const type = engineTypeSelect.value;
-			falconWeightsContainer.style.display = type === 'falcon' ? 'grid' : 'none';
-			fusionParamsContainer.style.display = type === 'fusion' ? 'contents' : 'none';
-			coldClearParamsContainer.style.display = type === 'cold-clear' ? 'block' : 'none';
-
-			// Common fields
-			const beamRow = beamWidthInput?.closest('.eval-row');
-			const depthRow = depthInput?.closest('.eval-row');
-			if (beamRow) beamRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
-			if (depthRow) depthRow.style.display = type === 'cold-clear' ? 'none' : 'flex';
+			applyEngineVisibility(type);
 
 			if (type === 'falcon') {
 				if (!apiBaseInput.value || apiBaseInput.value == evalServerConfig.fusionApiBase || apiBaseInput.value.includes('8787')) {
@@ -2744,6 +2836,7 @@ function initEvaluationUi() {
 				if (depthInput) depthInput.value = '12';
 			}
 		});
+		applyEngineVisibility(engineTypeSelect.value);
 	}
 
 	const inputRateEl = getEvalElement('evalInputRate');

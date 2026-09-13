@@ -401,3 +401,61 @@ footer {
 	gap: 8px;
 	justify-content: flex-end;
 }
+
+.eval-group {
+	grid-column: 1 / -1;
+	border: 1px solid #333;
+	border-radius: 5px;
+	background: #141414;
+	overflow: hidden;
+}
+
+.eval-group > summary {
+	cursor: pointer;
+	padding: 6px 8px;
+	font-weight: bold;
+	font-size: 12px;
+	color: #4caf50;
+	list-style: none;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: #1d1d1d;
+}
+
+.eval-group > summary::-webkit-details-marker {
+	display: none;
+}
+
+.eval-group > summary::before {
+	content: '\25B8';
+	display: inline-block;
+	font-size: 10px;
+	color: #8a8a8a;
+	transition: transform 0.15s ease;
+}
+
+.eval-group[open] > summary::before {
+	transform: rotate(90deg);
+}
+
+.eval-group > summary:hover {
+	background: #242424;
+}
+
+.eval-group-body {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	column-gap: 8px;
+	row-gap: 6px;
+	padding: 8px;
+}
+
+.eval-group-body .eval-row {
+	margin: 0;
+}
+
+.eval-master {
+	justify-content: flex-start;
+	font-weight: bold;
+}
