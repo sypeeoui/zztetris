@@ -2187,7 +2187,7 @@ async function filterRoutesByReachability(apiBase, rows, routes, mode) {
 	const checks = await Promise.all(
 		routes.map(async (route) => {
 			try {
-				const reachable = await isMoveReachable(apiBase, rows, route.moves?.[0], mode);
+				const reachable = await isMoveReachable(apiBase, rows, route.orderedMoves?.[0] || route.moves?.[0], mode);
 				return { route, reachable, failed: false };
 			} catch (error) {
 				return { route, reachable: false, failed: true };
@@ -2359,7 +2359,7 @@ function updateEvaluationText() {
 	];
 	scoreEl.textContent = scoreLine.join('\n');
 
-	const pvSummary = selectedRoute.moves
+	const pvSummary = (selectedRoute.orderedMoves || selectedRoute.moves)
 		.map((m) => {
 			const p = enginePieceToChar[m.piece] || '?';
 			return `${p}@x${m.x},y${m.y},r${m.rotation}`;
@@ -2393,7 +2393,10 @@ function rebuildEvaluationOverlay() {
 
 	const activeRouteKey = evalState.hoverRouteKey || evalState.selectedRouteKey;
 	const selectedRoute = data.routes.find((r) => r.key == activeRouteKey) || data.routes[0];
-	evalState.overlayCells = simulateOverlayForRoute(selectedRoute.moves, boardRowsForEngine());
+	// PC setup routes carry a queue-legal `orderedMoves`; use it so the first
+	// piece shown is the one the queue actually allows, even before selecting.
+	const routeMoves = selectedRoute.orderedMoves || selectedRoute.moves;
+	evalState.overlayCells = simulateOverlayForRoute(routeMoves, boardRowsForEngine());
 	updateEvaluationText();
 }
 
