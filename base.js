@@ -1351,16 +1351,21 @@ function setupBoardToMoves(boardStr) {
 	return moves;
 }
 
-function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold, holdPiece) {
+function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece) {
 	// A setup field is only useful if its 4 pieces can actually be placed in
 	// an order the queue allows. Model one hold slot and gravity: a piece can
 	// be dropped into its final cells only when they are free and the piece is
 	// supported from below.
 	//
+	// Returns the order in which the moves (indices into `moves`) can be
+	// played with the given queue, or null if the setup is not buildable. The
+	// order is what the overlay must follow so the highlighted piece is the
+	// one the player can actually place next.
+	//
 	// `holdPiece` seeds the hold slot with the piece already sitting there, so
 	// a setup that needs the held piece first is accepted (the user just presses
 	// hold). It is a piece character or null/undefined.
-	if (!Array.isArray(moves) || moves.length !== 4) return false;
+	if (!Array.isArray(moves) || moves.length !== 4) return null;
 
 	const targets = moves.map((mv) => ({
 		piece: enginePieceToChar[mv.piece],
@@ -1390,31 +1395,45 @@ function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold, holdPiece) {
 	};
 
 	const seen = new Set();
-	const stack = [{ queue: queuePieces.slice(), hold: holdPiece || null, mask: 0 }];
+	const stack = [{ queue: queuePieces.slice(), hold: holdPiece || null, mask: 0, order: [] }];
 	while (stack.length) {
 		const st = stack.pop();
 		const key = st.queue.join('') + '|' + (st.hold || '_') + '|' + st.mask;
 		if (seen.has(key)) continue;
 		seen.add(key);
-		if (st.mask === fullMask) return true;
+		if (st.mask === fullMask) return st.order;
 
 		const occ = occupiedForMask(st.mask);
 		const current = st.queue.length ? st.queue[0] : null;
-		if (current) {
-			for (let i = 0; i < targets.length; i++) {
-				if ((st.mask & (1 << i)) === 0 && targets[i].piece === current && canPlace(targets[i], occ)) {
-					stack.push({ queue: st.queue.slice(1), hold: st.hold, mask: st.mask | (1 << i) });
-				}
-			}
-		}
+
+		// Push the hold swap first so direct placements (pushed after, and
+		// therefore popped first) are preferred; holding is only used when the
+		// setup genuinely needs it.
 		if (allowHold && current) {
 			const nq = st.queue.slice(1);
 			const nh = current;
 			if (st.hold != null) nq.unshift(st.hold);
-			stack.push({ queue: nq, hold: nh, mask: st.mask });
+			stack.push({ queue: nq, hold: nh, mask: st.mask, order: st.order });
+		}
+
+		if (current) {
+			for (let i = targets.length - 1; i >= 0; i--) {
+				if ((st.mask & (1 << i)) === 0 && targets[i].piece === current && canPlace(targets[i], occ)) {
+					stack.push({
+						queue: st.queue.slice(1),
+						hold: st.hold,
+						mask: st.mask | (1 << i),
+						order: st.order.concat(i),
+					});
+				}
+			}
 		}
 	}
-	return false;
+	return null;
+}
+
+function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold, holdPiece) {
+	return pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece) !== null;
 }
 
 function pcSetupIsBuildable(boardStr, queuePieces, allowHold, holdPiece) {
@@ -1458,12 +1477,16 @@ function buildPcSetupRoutes(pcCount) {
 		for (const setup of setups) {
 			const moves = setupBoardToMoves(setup.board || '');
 			if (!moves.length) continue;
-			if (!pcSetupIsBuildableFromMoves(moves, firstFive, true, holdP)) continue;
+			const order = pcSetupPlacementOrderFromMoves(moves, firstFive, true, holdP);
+			if (!order) continue;
 			const prob = parseFloat(String(setup.prob || '').replace('%', '').trim());
 			routes.push({
 				key: `pc_setup_${idx++}`,
 				label: `PC ${combo}${Number.isFinite(prob) ? ` ${prob.toFixed(1)}%` : ''}`,
 				moves,
+				// Playable order (indices into `moves`) so the overlay can show
+				// the piece the queue actually allows next.
+				orderedMoves: order.map((i) => moves[i]),
 				score: Number.isFinite(prob) ? prob : 0,
 				probability: Number.isFinite(prob) ? prob / 100 : null,
 				hold_used: false,
@@ -1528,41 +1551,73 @@ function applyPcSetup(route) {
 	return true;
 }
 
-function pcSetupPlanMatchesBoard(plan) {
-	if (!plan || !plan.cells || !plan.cells.length) return false;
-	const setupSet = new Set(plan.cells.map((c) => c.y * 10 + c.x));
-	for (let i = 0; i < boardSize[1]; i++) {
-		for (let x = 0; x < boardSize[0]; x++) {
-			if (board[i][x].t == 1) {
-				const y = boardSize[1] - 1 - i;
-				if (!setupSet.has(y * 10 + x)) return false;
-			}
-		}
+function boardRowsEqual(a, b) {
+	for (let y = 0; y < 40; y++) {
+		if (a[y] !== b[y]) return false;
 	}
 	return true;
 }
 
-function computePcSetupPlanOverlay(plan) {
-	// Board cells already placed, keyed by engine coordinates.
-	const placed = new Set();
-	for (let i = 0; i < boardSize[1]; i++) {
-		for (let x = 0; x < boardSize[0]; x++) {
-			if (board[i][x].t == 1) placed.add((boardSize[1] - 1 - i) * 10 + x);
-		}
+// Simulate the setup in the order the queue allows, including gravity and line
+// clears, starting from the board the plan was armed on. Returns whether the
+// live board still matches some point of the route, and the overlay for the
+// moves still to come (the next one is `step: 0`).
+function simulatePcSetupPlan(plan) {
+	const ordered = plan.orderedMoves || plan.moves;
+	if (!Array.isArray(ordered) || !ordered.length) {
+		return { matched: false, overlay: [] };
 	}
 
-	// Keep only the not-yet-placed pieces of the setup; the next one is bright.
-	const overlay = [];
-	let step = 0;
-	for (const move of plan.moves) {
-		const remaining = getMoveCells(move).filter((c) => !placed.has(c.y * 10 + c.x));
-		if (!remaining.length) continue;
-		for (const cell of remaining) {
-			overlay.push({ x: cell.x, y: cell.y, piece: cell.piece, step });
+	const start = plan.startRows || boardRowsForEngine();
+	const current = boardRowsForEngine();
+	let rows = start.slice();
+	let visualClearLift = 0;
+	let matchedStep = boardRowsEqual(rows, current) ? 0 : -1;
+	const stepCells = [];
+
+	for (const move of ordered) {
+		const cells = getMoveCells(move);
+		if (!cells.length) continue;
+		if (!cells.every((cell) => (rows[cell.y] & (1 << cell.x)) === 0)) break;
+
+		const placed = [];
+		for (const cell of cells) {
+			rows[cell.y] |= 1 << cell.x;
+			// Draw at the pre-clear position so the overlay lines up with the
+			// board, which is not visually cleared while the route is followed.
+			placed.push({ x: cell.x, y: cell.y + visualClearLift, piece: cell.piece });
 		}
-		step++;
+		stepCells.push(placed);
+
+		const nextRows = [];
+		for (let y = 0; y < 40; y++) {
+			if (rows[y] !== 0x3ff) nextRows.push(rows[y]);
+		}
+		visualClearLift += 40 - nextRows.length;
+		while (nextRows.length < 40) nextRows.push(0);
+		rows = nextRows;
+
+		if (boardRowsEqual(rows, current)) matchedStep = stepCells.length;
 	}
-	return overlay;
+
+	if (matchedStep < 0) return { matched: false, overlay: [] };
+
+	const overlay = [];
+	for (let s = matchedStep; s < stepCells.length; s++) {
+		for (const cell of stepCells[s]) {
+			overlay.push({ ...cell, step: s - matchedStep });
+		}
+	}
+	return { matched: true, overlay };
+}
+
+function pcSetupPlanMatchesBoard(plan) {
+	if (!plan || !plan.cells || !plan.cells.length) return false;
+	return simulatePcSetupPlan(plan).matched;
+}
+
+function computePcSetupPlanOverlay(plan) {
+	return simulatePcSetupPlan(plan).overlay;
 }
 
 function armPcSetupPlan(route) {
@@ -1574,6 +1629,8 @@ function armPcSetupPlan(route) {
 		board: route.setup.board,
 		cells,
 		moves: route.moves,
+		orderedMoves: route.orderedMoves || route.moves,
+		startRows: boardRowsForEngine(),
 	};
 }
 
