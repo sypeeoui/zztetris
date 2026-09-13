@@ -348,7 +348,7 @@ const wasmHelper = {
 
 	async ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./engineWorker.js?v=3');
+		this.worker = new Worker('./engineWorker.js?v=4');
 		this.worker.onmessage = (e) => {
 			const { type, result, error, requestId } = e.data;
 			if (type === 'result' || type === 'error') {

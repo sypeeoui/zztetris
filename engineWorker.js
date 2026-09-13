@@ -36,19 +36,19 @@ async function initEngine(engineType, baseUrl) {
         const mod = await import(baseUrl + 'wasm/direct_cobra_copy.js');
         // Pass an explicit, versioned wasm URL so a previously cached binary
         // cannot be paired with this updated glue/worker.
-        await mod.default(baseUrl + 'wasm/direct_cobra_copy_bg.wasm?v=3');
+        await mod.default(baseUrl + 'wasm/direct_cobra_copy_bg.wasm?v=4');
         mod.init();
         engines.fusion.module = mod;
         engines.fusion.ready = true;
     } else if (engineType === 'falcon') {
         const mod = await import(baseUrl + 'wasm/falcon_2.js');
-        await mod.default(baseUrl + 'wasm/falcon_2_bg.wasm?v=3');
+        await mod.default(baseUrl + 'wasm/falcon_2_bg.wasm?v=4');
         mod.init_panic_hook();
         engines.falcon.module = mod;
         engines.falcon.ready = true;
     } else if (engineType === 'coldClear') {
         const mod = await import(baseUrl + 'wasm/cold_clear_2.js');
-        await mod.default(baseUrl + 'wasm/cold_clear_2_bg.wasm?v=3');
+        await mod.default(baseUrl + 'wasm/cold_clear_2_bg.wasm?v=4');
         mod.init_panic_hook();
         engines.coldClear.module = mod;
         engines.coldClear.ready = true;
