@@ -1271,10 +1271,14 @@ function currentBagPieces() {
 }
 
 function pcSetupCountForBag(bagPieces) {
-	// The best-chance-field list is grouped by how far into the opening we
-	// are; a full bag (7 left) maps to count 1 and an empty bag to count 8.
-	const remaining = bagPieces.length;
-	return Math.min(8, Math.max(1, 8 - remaining));
+	// The best-chance-field tables are indexed by the PC number in a PC loop,
+	// not by raw pieces left in the bag. zztetris's PC(n) helper (zztetris.js)
+	// builds the current bag for the nth PC with (10 - 3n) % 7 pieces, so the
+	// inverse is n = (2 * available) % 7 + 1. `available` counts the current
+	// bag plus the held piece, since a carried-over hold is part of the same
+	// window the tables were generated for (e.g. 3 in bag + 1 hold == PC 2).
+	const available = Math.max(1, Math.min(7, bagPieces.length + (holdP ? 1 : 0)));
+	return (2 * available) % 7 + 1;
 }
 
 function setupBoardToCells(boardStr) {
@@ -2483,7 +2487,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 					true
 				);
 			} else {
-				const where = usedCount ? `bag count ${usedCount}` : 'all bag counts';
+				const where = usedCount ? `PC #${usedCount}` : 'all PC tables';
 				setEvalStatus(
 					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Double-click a setup to apply it.`
 				);
