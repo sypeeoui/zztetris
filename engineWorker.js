@@ -26,8 +26,41 @@ self.onmessage = async function(e) {
         } catch (err) {
             self.postMessage({ type: 'error', error: err.message, requestId });
         }
+        return;
+    }
+
+    if (type === 'load_legal_boards') {
+        try {
+            const count = await loadLegalBoards(payload.baseUrl, payload.url);
+            self.postMessage({ type: 'legal_boards_loaded', count });
+        } catch (err) {
+            self.postMessage({ type: 'error', error: err.message });
+        }
     }
 };
+
+let legalBoardsPromise = null;
+
+// Fetch the precomputed perfect-clear database once and hand it to the engine.
+// The table is only used to prune the PC search, so it is safe to load lazily.
+async function loadLegalBoards(baseUrl, url) {
+    if (legalBoardsPromise) return legalBoardsPromise;
+    legalBoardsPromise = (async () => {
+        await initEngine('fusion', baseUrl);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`failed to load legal boards: ${response.status}`);
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return engines.fusion.module.load_legal_boards(bytes);
+    })();
+    try {
+        return await legalBoardsPromise;
+    } catch (err) {
+        legalBoardsPromise = null;
+        throw err;
+    }
+}
 
 async function initEngine(engineType, baseUrl) {
     if (engines[engineType]?.ready) return;
@@ -36,7 +69,7 @@ async function initEngine(engineType, baseUrl) {
         const mod = await import(baseUrl + 'wasm/fusion_engine.js');
         // Pass an explicit, versioned wasm URL so a previously cached binary
         // cannot be paired with this updated glue/worker.
-        await mod.default(baseUrl + 'wasm/fusion_engine_bg.wasm?v=1');
+        await mod.default(baseUrl + 'wasm/fusion_engine_bg.wasm?v=2');
         mod.init();
         engines.fusion.module = mod;
         engines.fusion.ready = true;

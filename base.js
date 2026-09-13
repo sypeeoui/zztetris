@@ -349,7 +349,7 @@ const wasmHelper = {
 
 	async ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./engineWorker.js?v=6');
+		this.worker = new Worker('./engineWorker.js?v=7');
 		this.worker.onmessage = (e) => {
 			const { type, result, error, requestId } = e.data;
 			if (type === 'result' || type === 'error') {
@@ -403,6 +403,47 @@ const wasmHelper = {
 		});
 	}
 };
+
+// Lazily fetch the precomputed perfect-clear database (legal-boards.leb128)
+// and hand it to the engine. The engine uses it only to prune the PC search, so
+// loading it late never changes earlier results, just makes later ones faster.
+var legalBoardsLoadPromise = null;
+function ensureLegalBoardsLoaded() {
+	if (legalBoardsLoadPromise) return legalBoardsLoadPromise;
+	const baseUrl = wasmHelper.getBaseUrl();
+	legalBoardsLoadPromise = wasmHelper
+		.ensureWorker()
+		.then(
+			() =>
+				new Promise((resolve, reject) => {
+					const handler = (e) => {
+						if (e.data.type === 'legal_boards_loaded') {
+							wasmHelper.worker.removeEventListener('message', handler);
+							resolve(e.data.count);
+						} else if (e.data.type === 'error' && !e.data.requestId) {
+							wasmHelper.worker.removeEventListener('message', handler);
+							reject(new Error(e.data.error));
+						}
+					};
+					wasmHelper.worker.addEventListener('message', handler);
+					wasmHelper.worker.postMessage({
+						type: 'load_legal_boards',
+						payload: { baseUrl, url: `${baseUrl}legal-boards.leb128` },
+					});
+				})
+		)
+		.then((count) => {
+			setEvalStatus(`Loaded ${Number(count).toLocaleString()} legal PC boards for faster PC search.`);
+			return count;
+		})
+		.catch((error) => {
+			console.warn('legal-boards load failed:', error);
+			legalBoardsLoadPromise = null;
+			return null;
+		});
+	return legalBoardsLoadPromise;
+}
+
 for (let i = 0; i < boardSize[1]; i++) {
 	board.push(aRow());
 }
@@ -2567,6 +2608,10 @@ function rebuildEvaluationOverlay() {
 
 async function analyzeWithEngine(forceRefresh = false) {
 	if (evalState.inFlight) return;
+
+	// PC mode gets much faster once the precomputed legal-board database is
+	// loaded, so kick the (lazy, one-time) fetch off on first use.
+	if (isPcModeEnabled()) ensureLegalBoardsLoaded();
 
 	// A live 4-piece setup plan owns the overlay until the player deviates from
 	// it or completes it, so don't overwrite the shadows with a fresh search.
