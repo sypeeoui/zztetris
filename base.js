@@ -1500,7 +1500,50 @@ function buildPcSetupRoutes(pcCount) {
 	}
 
 	routes.sort((a, b) => b.score - a.score);
-	return { routes: routes.slice(0, 12), bagPieces, pcCount, firstFive };
+	return { routes: dedupePcSetupRoutes(routes).slice(0, 12), bagPieces, pcCount, firstFive };
+}
+
+function canonicalPcSetupBoard(boardStr) {
+	// The source table lists several setups per combo, often the same terrain
+	// with the pieces assigned differently, and mirrored terrains are the same
+	// shape. Reduce the board to its filled-cell pattern, trim empty columns,
+	// and pick the lexicographically smaller of the board and its horizontal
+	// mirror so equivalent terrains collapse to one route.
+	if (!boardStr || boardStr.length < 40) return boardStr || '';
+	const rows = [];
+	for (let r = 0; r < 4; r++) {
+		rows.push(
+			boardStr
+				.slice(r * 10, r * 10 + 10)
+				.split('')
+				.map((ch) => (ch === '_' ? '_' : '#'))
+				.join('')
+		);
+	}
+	const colEmpty = (c) => rows.every((row) => row[c] === '_');
+	let cs = 0;
+	let ce = 9;
+	while (cs <= ce && colEmpty(cs)) cs++;
+	while (ce >= cs && colEmpty(ce)) ce--;
+	const trimmed = rows.map((row) => row.slice(cs, ce + 1));
+	const mirrored = trimmed.map((row) => row.split('').reverse().join(''));
+	const straight = trimmed.join('/');
+	const flipped = mirrored.join('/');
+	return straight <= flipped ? straight : flipped;
+}
+
+function dedupePcSetupRoutes(routes) {
+	// Routes are already sorted best-first, so keeping the first occurrence of
+	// each canonical terrain keeps the highest-probability version.
+	const seen = new Set();
+	const unique = [];
+	for (const route of routes) {
+		const key = route.setup ? canonicalPcSetupBoard(route.setup.board) : route.key;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(route);
+	}
+	return unique;
 }
 
 function consumeQueuePieces(usedPieces) {
@@ -1553,6 +1596,123 @@ function applyPcSetup(route) {
 	setEvalStatus(`Applied PC setup ${route.setup.combo}.`);
 	if (evalState.enabled) analyzeWithEngine(true);
 	return true;
+}
+
+// Board and remaining queue after playing a 4-piece setup, computed without
+// touching the live game state. This is what the engine searches from when it
+// verifies that a setup really reaches a perfect clear with the pieces the
+// player actually has.
+function pcSetupPostState(route) {
+	const rows = new Array(40).fill(0);
+	for (const cell of setupBoardToCells(route.setup.board)) {
+		if (cell.x >= 0 && cell.x < 10 && cell.y >= 0 && cell.y < 40) {
+			rows[cell.y] |= 1 << cell.x;
+		}
+	}
+
+	const seq = [];
+	if (piece) seq.push(piece);
+	for (const p of queue) if (p != '|') seq.push(p);
+
+	const used = route.setup.combo.split('');
+	const usedHold = holdP ? used.includes(holdP) : false;
+	if (usedHold) used.splice(used.indexOf(holdP), 1);
+	for (const p of used) {
+		const i = seq.indexOf(p);
+		if (i >= 0) seq.splice(i, 1);
+	}
+
+	// Extend with whole 7-bags so the PC search always has enough queue.
+	while (seq.length < 8) {
+		for (const p of names.shuffle()) seq.push(p);
+	}
+
+	return {
+		rows,
+		piece: seq.shift() || null,
+		queue: seq,
+		hold: usedHold ? null : holdP || null,
+	};
+}
+
+async function runPcSetupCheck(post, budgetMs) {
+	if (!post || !post.piece) return null;
+	const pieceId = charToEnginePiece[post.piece];
+	if (pieceId === undefined) return null;
+	const queueIds = post.queue
+		.map((p) => charToEnginePiece[p])
+		.filter((v) => v !== undefined)
+		.slice(0, 14);
+	const holdId = post.hold ? charToEnginePiece[post.hold] : null;
+	const overrides = {
+		pc_mode: true,
+		time_budget_ms: budgetMs,
+		depth: Math.floor(readNumberInput('evalDepth', 14, 1)),
+		extend_queue_7bag: !!getEvalElement('evalExtendQueue')?.checked,
+		b2b: currentB2BForEngine(),
+		combo: currentComboForEngine(),
+		pending_garbage: 0,
+	};
+	return wasmHelper.findBestMove('fusion', {
+		rows: post.rows,
+		pieceId,
+		queue: queueIds,
+		holdId,
+		overrides,
+	});
+}
+
+// Ask the engine whether each setup reaches a PC, highest probability first,
+// until the shared time budget runs out.
+async function verifyPcSetupRoutes(routes, totalBudgetMs) {
+	const start = Date.now();
+	let anyVerified = false;
+	let anyChecked = false;
+	for (const route of routes) {
+		if (!route.setup) continue;
+		const elapsed = Date.now() - start;
+		if (elapsed >= totalBudgetMs) {
+			route.pcCheck = 'skipped';
+			updatePcSetupRouteItem(route);
+			continue;
+		}
+		const remaining = totalBudgetMs - elapsed;
+		const perSetup = Math.max(60, Math.min(300, remaining));
+		try {
+			const data = await runPcSetupCheck(pcSetupPostState(route), perSetup);
+			route.pcCheck = data && data.pv && data.pv.length ? 'verified' : 'none';
+			anyChecked = true;
+			if (route.pcCheck === 'verified') {
+				route.pcPv = data.pv;
+				anyVerified = true;
+			}
+		} catch (error) {
+			route.pcCheck = 'unchecked';
+		}
+		updatePcSetupRouteItem(route);
+	}
+	return { anyVerified, anyChecked };
+}
+
+function pcSetupRouteStatus(route) {
+	if (route.continuation) return 'continuation';
+	if (route.pcCheck === 'verified') return 'PC found';
+	if (route.pcCheck === 'none') return 'no PC';
+	if (route.pcCheck === 'checking') return 'checking...';
+	if (route.pcCheck === 'skipped') return 'unchecked';
+	return '';
+}
+
+function pcSetupRouteText(route) {
+	const status = pcSetupRouteStatus(route);
+	return status ? `${route.label} - ${status}` : route.label;
+}
+
+function updatePcSetupRouteItem(route) {
+	const listEl = getEvalElement('evalRoutesList');
+	if (!listEl) return;
+	const item = listEl.querySelector(`[data-route-key="${route.key}"]`);
+	if (item) item.textContent = pcSetupRouteText(route);
 }
 
 function boardRowsEqual(a, b) {
@@ -2236,12 +2396,13 @@ function renderRoutesList() {
 	routes.forEach((route) => {
 		const item = document.createElement('div');
 		item.className = 'eval-route-item';
+		item.dataset.routeKey = route.key;
 		item.title = route.setup ? 'Double-click to apply this PC setup' : 'Double-click to play this route';
 		if (route.key == evalState.selectedRouteKey) {
 			item.classList.add('eval-route-item--active');
 		}
 		if (route.setup) {
-			item.textContent = route.label;
+			item.textContent = pcSetupRouteText(route);
 		} else {
 			const scoreText = `score ${formatEvalNumber(route.score)}`;
 			const probText = typeof route.probability == 'number' ? `, p ${(route.probability * 100).toFixed(1)}%` : '';
@@ -2467,7 +2628,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 					}
 				}
 				all.sort((a, b) => b.score - a.score);
-				result = { routes: all.slice(0, 12), bagPieces, pcCount: null };
+				result = { routes: dedupePcSetupRoutes(all).slice(0, 12), bagPieces, pcCount: null };
 				usedCount = null;
 			}
 
@@ -2488,9 +2649,31 @@ async function analyzeWithEngine(forceRefresh = false) {
 				);
 			} else {
 				const where = usedCount ? `PC #${usedCount}` : 'all PC tables';
+				for (const route of routes) {
+					if (route.setup) route.pcCheck = 'checking';
+				}
+				renderRoutesList();
 				setEvalStatus(
-					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Double-click a setup to apply it.`
+					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Checking which setups reach a PC...`
 				);
+				const budget = Math.max(200, Math.floor(readNumberInput('evalTimeBudgetMs', 1000, 1)));
+				const { anyVerified, anyChecked } = await verifyPcSetupRoutes(routes, budget);
+				if (anyChecked && !anyVerified) {
+					// No setup clears immediately. Keep the same fields but mark
+					// them as 4-line PC continuations instead of dead ends.
+					for (const route of routes) {
+						if (route.setup && route.pcCheck !== 'verified') route.continuation = true;
+					}
+					setEvalStatus(
+						`No setup reaches an immediate PC; showing 4-line PC continuation setups for ${where}. Double-click a setup to apply it.`
+					);
+				} else {
+					setEvalStatus(
+						`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Double-click a setup to apply it.`
+					);
+				}
+				renderRoutesList();
+				rebuildEvaluationOverlay();
 			}
 		} catch (error) {
 			evalState.overlayCells = [];
