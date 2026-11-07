@@ -204,7 +204,9 @@ if (LS.config && LS.version == '2023-05-02a') {
 	codes.push('160', '30', '15', '20','100'); // Handling settings
 	codes.push('KeyO', 'KeyU', 'KeyI'); // Reset keybinds
 	LS.config = JSON.stringify(codes);
-	aboutPopup();
+	// The mobile shell has its own settings sheet; don't block the first load
+	// with the desktop alert.
+	if (!document.documentElement.classList.contains('mobile')) aboutPopup();
 
 }
 
@@ -247,6 +249,8 @@ var combo = -1;
 var b2b = 0;
 var dasID = 0;
 var sdINT = (dasINT = null);
+// Mobile pause state. The mobile shell sets this while its menu is open.
+var zzPaused = false;
 var xPOS = spawn[0];
 var yPOS = spawn[1];
 var xGHO = spawn[0];
@@ -1739,6 +1743,10 @@ function applyPcSetup(route) {
 	const cells = setupBoardToCells(route.setup.board);
 	if (!cells.length) return false;
 
+	// The plan starts from the board the setup is applied to, so the overlay
+	// can follow the setup pieces and then the PC line the engine returns.
+	const startRows = boardRowsForEngine();
+
 	for (let i = 0; i < boardSize[1]; i++) {
 		for (let x = 0; x < boardSize[0]; x++) {
 			board[i][x] = { t: 0, c: '' };
@@ -1777,19 +1785,23 @@ function applyPcSetup(route) {
 	updateHistory();
 
 	// The board changed: drop the empty-board route list and any verification
-	// still running against it, then analyze the new position.
+	// still running against it, then analyze the new position. Keep the setup
+	// route visible while the engine finds the PC line, and arm the plan so
+	// the overlay survives the search and the pieces the player places.
 	evalState.analysisGeneration++;
-	evalState.latestData = null;
 	evalState.lastAppliedHash = '';
-	evalState.pcSetupPlan = null;
-	// Keep the PC lines the setup check already found so the next analysis
-	// does not have to search for them again.
+	evalState.latestData = {
+		raw: { pc_setup: true },
+		routes: [route],
+		score: route.score,
+	};
 	evalState.pcSetupSolutions = route.pcSolutions || [];
 	evalState.pcSetupBoard = route.setup.board;
 	evalState.pcSetupQueue = [piece, ...queue].join('');
+	armPcSetupPlan(route, startRows);
 	renderRoutesList();
 	rebuildEvaluationOverlay();
-	setEvalStatus(`Applied PC setup ${route.setup.combo}.`);
+	setEvalStatus(`Applied PC setup ${route.setup.combo}. Finding the PC line...`);
 	if (evalState.enabled) analyzeWithEngine(true);
 	return true;
 }
@@ -1975,17 +1987,20 @@ function computePcSetupPlanOverlay(plan) {
 	return simulatePcSetupPlan(plan).overlay;
 }
 
-function armPcSetupPlan(route) {
+function armPcSetupPlan(route, startRows = boardRowsForEngine()) {
 	if (!route || !route.setup) return;
 	const cells = setupBoardToCells(route.setup.board);
 	if (!cells.length) return;
+	const setupMoves = (route.orderedMoves || route.moves || []).slice();
 	evalState.pcSetupPlan = {
 		combo: route.setup.combo,
 		board: route.setup.board,
 		cells,
-		moves: route.moves,
-		orderedMoves: route.orderedMoves || route.moves,
-		startRows: boardRowsForEngine(),
+		moves: setupMoves.slice(),
+		orderedMoves: setupMoves.slice(),
+		setupMoves,
+		startRows: startRows.slice(),
+		pcMovesLoaded: false,
 	};
 }
 
@@ -2897,27 +2912,6 @@ async function analyzeWithEngine(forceRefresh = false) {
 		return;
 	}
 
-	// The setup check already found PC lines for this exact board and queue;
-	// reuse them instead of searching again.
-	if (evalState.pcSetupSolutions.length && evalState.pcSetupBoard) {
-		const terrainRows = new Array(40).fill(0);
-		for (const cell of setupBoardToCells(evalState.pcSetupBoard)) {
-			if (cell.x >= 0 && cell.x < 10 && cell.y >= 0 && cell.y < 40) {
-				terrainRows[cell.y] |= 1 << cell.x;
-			}
-		}
-		const queueNow = [piece, ...queue].join('');
-		if (boardRowsEqual(terrainRows, rows) && queueNow === evalState.pcSetupQueue) {
-			evalState.latestData = null;
-			renderRoutesList();
-			rebuildEvaluationOverlay();
-			setEvalStatus(
-				`PC found: ${evalState.pcSetupSolutions.length} line(s) saved from the setup check. The move line is not available yet.`
-			);
-			return;
-		}
-	}
-
 	evalState.inFlight = true;
 	evalState.lastRequestAt = Date.now();
 	setEvalStatus('Analyzing position...');
@@ -3684,6 +3678,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
 			return;
 		}
+		if (zzPaused) return;
 		const input = ctrl[e.code];
 		if (input) {
 			e.preventDefault();
@@ -3741,6 +3736,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
 			return;
 		}
+		if (zzPaused) return;
 		const input = ctrl[e.code];
 		if (input) {
 			if (document.activeElement && document.activeElement.blur) {
@@ -3754,6 +3750,129 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			}
 		}
 	});
+
+	// Shared input API for the mobile shell. It mirrors the keyboard path so
+	// gestures and on-screen buttons get the same DAS/ARR/SDR behaviour.
+	function setPaused(value) {
+		zzPaused = !!value;
+		if (zzPaused) {
+			keysDown = 0;
+			lastKeys = 0;
+			dasID++;
+			clearActive();
+			setShape();
+		}
+	}
+
+	function pressAction(action) {
+		if (zzPaused || !flags[action]) return;
+		keysDown |= flags[action];
+		window.ZZStats?.onKeyDown(action);
+		switch (action) {
+			case 'SD':
+				softDrop();
+				break;
+			case 'HD':
+				hardDrop();
+				break;
+			case 'HL':
+				hold();
+				break;
+			case 'CW':
+				rotate('CW');
+				break;
+			case 'CCW':
+				rotate('CCW');
+				break;
+			case 'R180':
+				rotate('R180');
+				break;
+			case 'RE':
+				restart();
+				break;
+			case 'UNDO':
+				undo();
+				break;
+			case 'REDO':
+				redo();
+				break;
+			case 'RESET_SESSION':
+				window.ZZStats?.resetSession();
+				break;
+			case 'RESET_QUEUE':
+				window.ZZStats?.resetQueue();
+				break;
+			case 'RESET_QUEUE_HOLD':
+				window.ZZStats?.resetQueueHold();
+				break;
+		}
+	}
+
+	function releaseAction(action) {
+		if (!flags[action]) return;
+		if (keysDown & flags[action]) keysDown ^= flags[action];
+		window.ZZStats?.onKeyUp(action);
+		if (!(keysDown & flags.L) && !(keysDown & flags.R)) dasID++;
+	}
+
+	function tapAction(action) {
+		if (zzPaused || !flags[action]) return;
+		window.ZZStats?.onKeyDown(action);
+		switch (action) {
+			case 'L':
+				move('L');
+				break;
+			case 'R':
+				move('R');
+				break;
+			case 'SD':
+				move('SD');
+				break;
+			case 'HD':
+				hardDrop();
+				break;
+			case 'HL':
+				hold();
+				break;
+			case 'CW':
+				rotate('CW');
+				break;
+			case 'CCW':
+				rotate('CCW');
+				break;
+			case 'R180':
+				rotate('R180');
+				break;
+			case 'RE':
+				restart();
+				break;
+			case 'UNDO':
+				undo();
+				break;
+			case 'REDO':
+				redo();
+				break;
+			case 'RESET_SESSION':
+				window.ZZStats?.resetSession();
+				break;
+			case 'RESET_QUEUE':
+				window.ZZStats?.resetQueue();
+				break;
+			case 'RESET_QUEUE_HOLD':
+				window.ZZStats?.resetQueueHold();
+				break;
+		}
+		window.ZZStats?.onKeyUp(action);
+	}
+
+	window.ZZInput = {
+		press: pressAction,
+		release: releaseAction,
+		tap: tapAction,
+		setPaused,
+		isPaused: () => zzPaused,
+		actions: flags,
+	};
 
 	newPiece();
 	hist = [
@@ -3824,7 +3943,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 	setInterval(() => { //* gravity
-		if (document.getElementById('grav').checked) move('SD');
+		if (!zzPaused && document.getElementById('grav').checked) move('SD');
 	}, gravity);
 
 	function playSnd(sfx, overlap) {
@@ -3892,7 +4011,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	function arr(dir) {
 		let loop = setInterval(function () {
-			if (shiftDir == dir && keysDown & flags[dir]) {
+			if (!zzPaused && shiftDir == dir && keysDown & flags[dir]) {
 				move(dir);
 			} else {
 				clearInterval(loop);
@@ -3903,7 +4022,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	function das(dir, id) {
 		move(dir);
 		setTimeout(() => {
-			if (dasID == id) { //* check if das is still valid
+			if (dasID == id && !zzPaused) { //* check if das is still valid
 				arr(dir, id);
 			}
 		}, DAS);
@@ -3912,7 +4031,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	function softDrop() {
 		if (SDR) {
 			let loop = setInterval(() => {
-				if (keysDown & flags.SD) {
+				if (!zzPaused && keysDown & flags.SD) {
 					move('SD');
 				} else {
 					clearInterval(loop);
@@ -3921,7 +4040,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		} else {
 			// SDR is 0ms = instant SD
 			let loop = setInterval(() => {
-				if (keysDown & flags.SD) {
+				if (!zzPaused && keysDown & flags.SD) {
 					yPOS = yGHO;
 					clearActive();
 					setShape();
@@ -3937,6 +4056,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	function checkShift() {
 		// moving left/right with DAS and whatever
+		if (zzPaused) {
+			lastKeys = keysDown;
+			return;
+		}
 
 		if (keysDown & flags.L && !(lastKeys & flags.L)) {
 			// just pressed left

@@ -1,0 +1,606 @@
+/* Mobile shell for ZZTetris. Everything is scoped to html.mobile so the
+   desktop layout is untouched. */
+
+html.mobile,
+html.mobile body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
+	background: #111;
+	color: #fff;
+	touch-action: none;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+html.mobile body {
+	position: fixed;
+	inset: 0;
+}
+
+/* Hide the desktop chrome. */
+html.mobile .sidebar-nav,
+html.mobile .session-panel,
+html.mobile .board-settings,
+html.mobile .eval-panel,
+html.mobile #tcc,
+html.mobile .queue,
+html.mobile .left-column {
+	display: none !important;
+}
+
+html.mobile .main-layout {
+	margin: 0 !important;
+	padding: 0 !important;
+	width: 100%;
+	height: 100%;
+	display: block;
+	position: fixed;
+	inset: 0;
+}
+
+/* The board is a fixed-resolution canvas scaled by mobile.js. */
+html.mobile .board-wrap {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 10;
+}
+
+html.mobile[data-mobile-orientation='portrait'] .board-wrap {
+	top: calc(44px + env(safe-area-inset-top));
+	bottom: var(--zz-controls-height, clamp(120px, 24dvh, 200px));
+}
+
+html.mobile[data-mobile-orientation='landscape'] .board-wrap {
+	top: calc(44px + env(safe-area-inset-top));
+	left: calc(var(--zz-btn-size, 64px) * 2 + 46px + env(safe-area-inset-left));
+	right: calc(var(--zz-btn-size, 64px) * 2 + 46px + env(safe-area-inset-right));
+	bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+html.mobile #b {
+	padding: 0 !important;
+	width: auto;
+	height: auto;
+	max-width: 100%;
+	max-height: 100%;
+	image-rendering: pixelated;
+	touch-action: none;
+	pointer-events: none;
+}
+
+/* Notifications float over the board instead of living in the hidden queue. */
+html.mobile #notif:empty {
+	display: none;
+}
+
+html.mobile #notif {
+	position: fixed;
+	top: calc(54px + env(safe-area-inset-top));
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(82vw, 340px);
+	box-sizing: border-box;
+	padding: 8px 10px;
+	background: rgba(0, 0, 0, 0.78);
+	border: 1px solid #4caf50;
+	border-radius: 6px;
+	font-family: SLANT;
+	font-size: 15px;
+	line-height: 1.25;
+	letter-spacing: 1px;
+	white-space: pre-line;
+	text-align: center;
+	z-index: 45;
+	pointer-events: none;
+}
+
+/* Top HUD: hold + next, landscape only by default. */
+html.mobile #zzMobileHud {
+	position: fixed;
+	top: calc(6px + env(safe-area-inset-top));
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	z-index: 40;
+	pointer-events: none;
+}
+
+html.mobile #zzMobileHud canvas {
+	height: 40px;
+	width: auto;
+	image-rendering: pixelated;
+	background: rgba(0, 0, 0, 0.25);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 4px;
+}
+
+html.mobile #zzMobileHud[hidden] {
+	display: none;
+}
+
+html.mobile #zzMobileHud canvas[hidden] {
+	display: none;
+}
+
+/* Pause / menu button. */
+html.mobile #zzPauseBtn {
+	position: fixed;
+	z-index: 60;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 1px solid rgba(255, 255, 255, 0.28);
+	border-radius: 10px;
+	background: rgba(0, 0, 0, 0.42);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	touch-action: manipulation;
+}
+
+html.mobile #zzPauseBtn svg {
+	width: 22px;
+	height: 22px;
+	fill: currentColor;
+	pointer-events: none;
+}
+
+html.mobile #zzPauseBtn:active {
+	background: rgba(76, 175, 80, 0.6);
+}
+
+/* Portrait gesture pads. */
+html.mobile #zzPortraitControls {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: var(--zz-controls-height, clamp(120px, 24dvh, 200px));
+	display: none;
+	z-index: 30;
+	padding-bottom: env(safe-area-inset-bottom);
+	box-sizing: border-box;
+}
+
+html.mobile[data-mobile-orientation='portrait'] #zzPortraitControls {
+	display: flex;
+}
+
+html.mobile #zzPortraitControls .zzPad {
+	flex: 1;
+	position: relative;
+	touch-action: none;
+}
+
+html.mobile #zzPortraitControls .zzPad::after {
+	content: attr(data-hint);
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: rgba(255, 255, 255, 0.13);
+	font-family: SLANT;
+	font-size: 12px;
+	line-height: 1.6;
+	letter-spacing: 2px;
+	text-align: center;
+	white-space: pre-line;
+	pointer-events: none;
+	transition: opacity 0.4s;
+}
+
+html.mobile #zzPortraitControls.zz-hints-hidden .zzPad::after {
+	opacity: 0;
+}
+
+html.mobile #zzPortraitControls .zzPad.zz-touching {
+	background: rgba(76, 175, 80, 0.06);
+}
+
+/* Landscape button clusters. */
+html.mobile #zzLandscapeControls {
+	position: fixed;
+	inset: 0;
+	display: none;
+	z-index: 30;
+	pointer-events: none;
+}
+
+html.mobile[data-mobile-orientation='landscape'] #zzLandscapeControls {
+	display: block;
+}
+
+html.mobile #zzLandscapeControls .zzCluster {
+	position: absolute;
+	bottom: calc(10px + env(safe-area-inset-bottom));
+	display: grid;
+	grid-auto-rows: var(--zz-btn-size, 64px);
+	gap: 10px;
+	pointer-events: auto;
+}
+
+html.mobile #zzLeftCluster {
+	left: calc(10px + env(safe-area-inset-left));
+	grid-template-columns: repeat(2, var(--zz-btn-size, 64px));
+}
+
+html.mobile #zzRightCluster {
+	right: calc(10px + env(safe-area-inset-right));
+	grid-template-columns: repeat(2, var(--zz-btn-size, 64px));
+}
+
+html.mobile .zzBtn {
+	width: var(--zz-btn-size, 64px);
+	height: var(--zz-btn-size, 64px);
+	padding: 0;
+	border: 2px solid rgba(255, 255, 255, 0.32);
+	border-radius: 14px;
+	background: rgba(18, 18, 18, 0.55);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	touch-action: none;
+	opacity: var(--zz-btn-opacity, 0.55);
+	transition: opacity 0.08s, transform 0.08s, background 0.08s;
+}
+
+html.mobile .zzBtn--wide {
+	width: auto;
+	grid-column: 1 / span 2;
+}
+
+html.mobile .zzBtn.zz-active {
+	opacity: 1;
+	background: rgba(76, 175, 80, 0.55);
+	transform: scale(0.96);
+}
+
+html.mobile .zzBtn svg {
+	width: 62%;
+	height: 62%;
+	fill: currentColor;
+	pointer-events: none;
+}
+
+/* Overlays and sheets. */
+html.mobile .zzOverlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	background: rgba(0, 0, 0, 0.72);
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+		env(safe-area-inset-left);
+	box-sizing: border-box;
+}
+
+html.mobile .zzOverlay[hidden] {
+	display: none;
+}
+
+html.mobile .zzSheet {
+	width: min(100%, 560px);
+	max-height: 92dvh;
+	overflow-y: auto;
+	background: #181818;
+	border: 1px solid #333;
+	border-radius: 16px 16px 0 0;
+	padding: 14px;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+	-webkit-overflow-scrolling: touch;
+}
+
+html.mobile .zzSheetHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid #2c2c2c;
+}
+
+html.mobile .zzSheetHeader h2 {
+	margin: 0;
+	font-family: SLANT;
+	font-size: 20px;
+	letter-spacing: 2px;
+	color: #4caf50;
+}
+
+html.mobile .zzClose {
+	width: 40px;
+	height: 40px;
+	border: 1px solid #3a3a3a;
+	border-radius: 10px;
+	background: #222;
+	color: #fff;
+	font-size: 22px;
+	line-height: 1;
+}
+
+html.mobile .zzSheetBtn {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	min-height: 48px;
+	padding: 10px 14px;
+	border: 1px solid #3a3a3a;
+	border-radius: 10px;
+	background: #222;
+	color: #fff;
+	font-family: SLANT;
+	font-size: 15px;
+	letter-spacing: 1px;
+	text-align: left;
+	text-decoration: none;
+	box-sizing: border-box;
+}
+
+html.mobile .zzSheetBtn:active {
+	background: #2e7d32;
+}
+
+html.mobile .zzSheetBtn--danger {
+	color: #ff8a80;
+}
+
+html.mobile .zzSheetBtn--active {
+	border-color: #4caf50;
+	background: #1f3320;
+}
+
+html.mobile .zzSheetRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-height: 40px;
+	font-family: SLANT;
+	font-size: 14px;
+	letter-spacing: 1px;
+}
+
+html.mobile .zzSheetRow label {
+	flex: 0 0 auto;
+	color: #cfcfcf;
+}
+
+html.mobile .zzSheetRow input[type='range'] {
+	flex: 1;
+	min-width: 80px;
+	accent-color: #4caf50;
+}
+
+html.mobile .zzSheetRow input[type='checkbox'] {
+	width: 22px;
+	height: 22px;
+	accent-color: #4caf50;
+}
+
+html.mobile .zzSheetRow select {
+	flex: 0 1 58%;
+	min-height: 36px;
+	background: #111;
+	color: #fff;
+	border: 1px solid #444;
+	border-radius: 6px;
+	padding: 4px 6px;
+	font-family: SLANT;
+	font-size: 13px;
+}
+
+html.mobile .zzSheetRow .zzVal {
+	flex: 0 0 52px;
+	text-align: right;
+	font-family: monospace;
+	font-size: 13px;
+	color: #9e9e9e;
+}
+
+html.mobile .zzTabs {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 5px;
+	padding-bottom: 2px;
+}
+
+html.mobile .zzTab {
+	min-height: 36px;
+	padding: 5px 3px;
+	border: 1px solid #3a3a3a;
+	border-radius: 8px;
+	background: #222;
+	color: #bbb;
+	font-family: SLANT;
+	font-size: 11px;
+	letter-spacing: 0.5px;
+}
+
+html.mobile .zzTab.zz-active {
+	background: #2e7d32;
+	border-color: #4caf50;
+	color: #fff;
+}
+
+html.mobile .zzTabPanel {
+	display: none;
+	flex-direction: column;
+	gap: 9px;
+}
+
+html.mobile .zzTabPanel.zz-active {
+	display: flex;
+}
+
+html.mobile .zzMapGrid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+html.mobile .zzMapCard {
+	background: #111;
+	border: 1px solid #333;
+	border-radius: 10px;
+	padding: 9px;
+	min-width: 0;
+}
+
+html.mobile .zzMapCard h4 {
+	margin: 0 0 6px;
+	font-family: SLANT;
+	font-size: 14px;
+	letter-spacing: 1px;
+	color: #4caf50;
+}
+
+html.mobile .zzMapRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	margin: 5px 0;
+	font-family: SLANT;
+	font-size: 12px;
+	letter-spacing: 0.5px;
+}
+
+html.mobile .zzMapRow label {
+	flex: 1 1 auto;
+	min-width: 0;
+	color: #cfcfcf;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+html.mobile .zzMapRow select {
+	flex: 0 1 58%;
+	min-width: 0;
+	min-height: 32px;
+	background: #1c1c1c;
+	color: #fff;
+	border: 1px solid #444;
+	border-radius: 6px;
+	padding: 3px 4px;
+	font-family: SLANT;
+	font-size: 12px;
+}
+
+html.mobile .zzHint {
+	margin: 4px 0;
+	color: #8d8d8d;
+	font-family: SLANT;
+	font-size: 12px;
+	line-height: 1.4;
+	letter-spacing: 0.5px;
+}
+
+html.mobile .zzModeGrid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+html.mobile .zzModeGrid .zzSheetBtn {
+	justify-content: center;
+	text-align: center;
+}
+
+/* Reused desktop board/queue controls inside the mobile sheets. */
+html.mobile #zzBoardBody {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+html.mobile #zzBoardBody .nav-section {
+	background: #111;
+	border: 1px solid #333;
+	border-radius: 10px;
+	padding: 10px;
+}
+
+html.mobile #zzBoardBody .nav-section h3 {
+	margin: 0 0 8px;
+	font-family: SLANT;
+	font-size: 15px;
+	letter-spacing: 1px;
+	color: #4caf50;
+	border-bottom: 1px solid #2c2c2c;
+	padding-bottom: 5px;
+}
+
+html.mobile #zzBoardBody .button {
+	min-height: 40px;
+	font-size: 13px;
+}
+
+html.mobile #zzBoardBody input[type='number'],
+html.mobile #zzBoardBody input[type='text'],
+html.mobile #zzBoardBody select {
+	min-height: 36px;
+	background: #1c1c1c;
+	color: #fff;
+	border: 1px solid #444;
+	border-radius: 6px;
+	padding: 4px 6px;
+	font-family: SLANT;
+	font-size: 13px;
+}
+
+html.mobile #zzBoardBody .practice-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-family: SLANT;
+	font-size: 13px;
+}
+
+html.mobile #zzBoardBody .practice-row label {
+	flex: 0 0 auto;
+}
+
+html.mobile #zzBoardBody .practice-row input[type='number'],
+html.mobile #zzBoardBody .practice-row input[type='range'] {
+	flex: 1;
+}
+
+html.mobile #zzBoardBody .paint-bucket {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+@media (max-width: 520px) {
+	html.mobile .zzMapGrid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (orientation: landscape) and (max-height: 430px) {
+	html.mobile .zzSheet {
+		max-height: 96dvh;
+	}
+}
