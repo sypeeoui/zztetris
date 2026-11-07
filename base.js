@@ -351,6 +351,9 @@ var evalState = {
 	latestData: null,
 	overlayCells: [],
 	pcSetupPlan: null,
+	pcSetupSolutions: [],
+	pcSetupBoard: '',
+	pcSetupQueue: '',
 };
 var evalControlApi = null;
 
@@ -1777,6 +1780,11 @@ function applyPcSetup(route) {
 	evalState.latestData = null;
 	evalState.lastAppliedHash = '';
 	evalState.pcSetupPlan = null;
+	// Keep the PC lines the setup check already found so the next analysis
+	// does not have to search for them again.
+	evalState.pcSetupSolutions = route.pcSolutions || [];
+	evalState.pcSetupBoard = route.setup.board;
+	evalState.pcSetupQueue = [piece, ...queue].join('');
 	renderRoutesList();
 	rebuildEvaluationOverlay();
 	setEvalStatus(`Applied PC setup ${route.setup.combo}.`);
@@ -2885,6 +2893,27 @@ async function analyzeWithEngine(forceRefresh = false) {
 			finishAnalysis();
 		}
 		return;
+	}
+
+	// The setup check already found PC lines for this exact board and queue;
+	// reuse them instead of searching again.
+	if (evalState.pcSetupSolutions.length && evalState.pcSetupBoard) {
+		const terrainRows = new Array(40).fill(0);
+		for (const cell of setupBoardToCells(evalState.pcSetupBoard)) {
+			if (cell.x >= 0 && cell.x < 10 && cell.y >= 0 && cell.y < 40) {
+				terrainRows[cell.y] |= 1 << cell.x;
+			}
+		}
+		const queueNow = [piece, ...queue].join('');
+		if (boardRowsEqual(terrainRows, rows) && queueNow === evalState.pcSetupQueue) {
+			evalState.latestData = null;
+			renderRoutesList();
+			rebuildEvaluationOverlay();
+			setEvalStatus(
+				`PC found: ${evalState.pcSetupSolutions.length} line(s) saved from the setup check. The move line is not available yet.`
+			);
+			return;
+		}
 	}
 
 	evalState.inFlight = true;
