@@ -93,6 +93,9 @@ var ctrl = { // default controls
 	KeyR: 'RE',
 	KeyT: 'UNDO',
 	KeyY: 'REDO',
+	KeyO: 'RESET_SESSION',
+	KeyU: 'RESET_QUEUE',
+	KeyI: 'RESET_QUEUE_HOLD',
 
 };
 
@@ -108,6 +111,9 @@ const flags = {
 	UNDO: 256,
 	REDO: 512,
 	RE: 1024,
+	RESET_SESSION: 2048,
+	RESET_QUEUE: 4096,
+	RESET_QUEUE_HOLD: 8192,
 };
 
 const color = { // piece colors
@@ -167,12 +173,17 @@ if (LS.config && LS.version == '2023-05-02a') {
 
 	const CTRLS = JSON.parse(LS.config);
 
-	let codes = Object.values(ctrl); // Action codes
+	let codes = Object.values(ctrl).slice(0, 11); // Action codes
 
 	ctrl = {};
 	for (let i = 0; i < 11; i++) {
 		ctrl[CTRLS[i]] = codes[i];
 	}
+	// Reset keybinds were appended to the config array; older configs fall
+	// back to the defaults.
+	ctrl[CTRLS[16] || 'KeyO'] = 'RESET_SESSION';
+	ctrl[CTRLS[17] || 'KeyU'] = 'RESET_QUEUE';
+	ctrl[CTRLS[18] || 'KeyI'] = 'RESET_QUEUE_HOLD';
 	DAS = parseInt(CTRLS[11]);
 	ARR = parseInt(CTRLS[12]);
 	SDR = parseInt(CTRLS[13]);
@@ -184,8 +195,9 @@ if (LS.config && LS.version == '2023-05-02a') {
 
 	// No config found or outdated version, make new
     console.log("No Config Found");
-	let codes = Object.keys(ctrl); // Deafult keys
+	let codes = Object.keys(ctrl).slice(0, 11); // Deafult keys
 	codes.push('160', '30', '15', '20','100'); // Handling settings
+	codes.push('KeyO', 'KeyU', 'KeyI'); // Reset keybinds
 	LS.config = JSON.stringify(codes);
 	aboutPopup();
 
@@ -323,6 +335,8 @@ var evalState = {
 	enabled: false,
 	optionsHidden: true,
 	inFlight: false,
+	refreshQueued: false,
+	analysisGeneration: 0,
 	playbackInFlight: false,
 	lastRequestAt: 0,
 	lastAppliedHash: '',
@@ -889,6 +903,7 @@ function newPiece() {
 	} else if (keysDown & flags.R) {
 		lastKeys = keysDown;
 	}
+	window.ZZStats?.onNewPiece(piece);
 }
 
 function notify(text) {
@@ -935,6 +950,7 @@ function undo() {
 		setShape();
 		updateQueue();
 		syncEvalChainInputsFromGame();
+		window.ZZStats?.onNewPiece(piece);
 	}
 }
 
@@ -954,6 +970,7 @@ function redo() {
 		setShape();
 		updateQueue();
 		syncEvalChainInputsFromGame();
+		window.ZZStats?.onNewPiece(piece);
 	}
 }
 
@@ -1471,11 +1488,13 @@ function enumeratePcSetupDissections(boardStr, cap = 64) {
 	return out;
 }
 
-function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece) {
-	// A setup field is only useful if its 4 pieces can actually be placed in
-	// an order the queue allows. Model one hold slot and gravity: a piece can
-	// be dropped into its final cells only when they are free, supported from
-	// below, and every cell above them is clear (no tuck or spin needed).
+function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece, requireDropPath = true) {
+	// A field is only useful if its pieces can actually be placed in an order
+	// the queue allows. Model one hold slot and gravity: a piece can be
+	// dropped into its final cells only when they are free and supported from
+	// below. With `requireDropPath` (setup routes) every cell above them must
+	// also be clear, so the overlay can be followed with straight drops; PC
+	// lines from the solver are already real placements, so they pass false.
 	//
 	// `queuePieces` is the playable queue with bag separators ('|') kept, so
 	// the returned post-setup queue stays bag-accurate. `holdPiece` seeds the
@@ -1484,7 +1503,7 @@ function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece
 	// Returns { order, queue, hold } where `order` is the playable order
 	// (indices into `moves`), `queue` is the remaining queue with separators,
 	// and `hold` is the piece left in the hold slot; null if not buildable.
-	if (!Array.isArray(moves) || moves.length !== 4) return null;
+	if (!Array.isArray(moves) || !moves.length || moves.length > 10) return null;
 
 	const targets = moves.map((mv) => ({
 		piece: enginePieceToChar[mv.piece],
@@ -1515,6 +1534,7 @@ function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece
 			}
 		}
 		if (!supported) return false;
+		if (!requireDropPath) return true;
 		// Straight-drop path: nothing may sit above the target cells.
 		for (const c of target.cells) {
 			for (let y = c.y + 1; y < 4; y++) {
@@ -1707,6 +1727,11 @@ function applyPcSetup(route) {
 	piece = q.shift() || '';
 	queue = q;
 	holdP = route.postHold || '';
+	// Keep the bag separators honest: a complete trailing bag needs its
+	// separator before a new bag is appended.
+	let sinceSep = 0;
+	for (let i = queue.length - 1; i >= 0 && queue[i] !== '|'; i--) sinceSep++;
+	if (sinceSep === 7) queue.push('|');
 	while (queue.length < 10) {
 		for (const p of names.shuffle()) queue.push(p);
 		queue.push('|');
@@ -1721,6 +1746,14 @@ function applyPcSetup(route) {
 	updateQueue();
 	updateHistory();
 
+	// The board changed: drop the empty-board route list and any verification
+	// still running against it, then analyze the new position.
+	evalState.analysisGeneration++;
+	evalState.latestData = null;
+	evalState.lastAppliedHash = '';
+	evalState.pcSetupPlan = null;
+	renderRoutesList();
+	rebuildEvaluationOverlay();
 	setEvalStatus(`Applied PC setup ${route.setup.combo}.`);
 	if (evalState.enabled) analyzeWithEngine(true);
 	return true;
@@ -1746,20 +1779,47 @@ function pcSetupGomenQueueSpec(postQueue) {
 	const strict = (bags.shift() || []).slice(0, 7).join('');
 	let spec = strict;
 	for (const bag of bags) {
-		if (bag.length) spec += `[${bag.join('')}]`;
+		// A bag holds at most 7 pieces; a longer run means two bags were
+		// merged by the queue extension, so split it back into bags.
+		for (let i = 0; i < bag.length; i += 7) {
+			spec += `[${bag.slice(i, i + 7).join('')}]`;
+		}
 	}
 	spec += '[IJLOSTZ]2';
 	return { spec, strictLength: strict.length };
+}
+
+// Fast PC-existence check for the current position with the gomen solver.
+// Used to tell the player a PC exists when the engine search runs out of
+// budget before producing a move line.
+async function gomenPcCount() {
+	const rows = boardRowsForEngine();
+	let garbage = 0n;
+	for (let y = 0; y < 4; y++) {
+		for (let x = 0; x < 10; x++) {
+			if (rows[y] & (1 << x)) garbage |= 1n << BigInt(y * 10 + x);
+		}
+	}
+	const playQueue = [];
+	if (piece) playQueue.push(piece);
+	for (const p of queue) playQueue.push(p);
+	const { spec } = pcSetupGomenQueueSpec(playQueue);
+	const data = await gomenSolver.solve({ garbage, queue: spec, hold: true });
+	return data.count || 0;
 }
 
 // Ask the gomen solver whether each setup reaches a PC with the queue the
 // player actually has. The solver is exhaustive for the 4-row window, so the
 // answer is deterministic and does not depend on a time budget.
 async function verifyPcSetupRoutes(routes) {
+	const generation = evalState.analysisGeneration;
 	let anyVerified = false;
 	let anyChecked = false;
 	for (const route of routes) {
 		if (!route.setup) continue;
+		// The board changed (a setup was applied or the player moved): stop
+		// updating a route list that no longer describes the position.
+		if (generation !== evalState.analysisGeneration) return { anyVerified, anyChecked };
 		try {
 			let garbage = 0n;
 			for (const cell of setupBoardToCells(route.setup.board)) {
@@ -1776,6 +1836,7 @@ async function verifyPcSetupRoutes(routes) {
 				data = await gomenSolver.solve({ garbage, queue: route.postHold + spec, hold: true });
 				count = data.count;
 			}
+			if (generation !== evalState.analysisGeneration) return { anyVerified, anyChecked };
 			route.pcCheck = count > 0 ? 'verified' : 'none';
 			route.pcSolutions = data.solutions || [];
 			anyChecked = true;
@@ -2659,8 +2720,21 @@ function rebuildEvaluationOverlay() {
 	updateEvaluationText();
 }
 
+function finishAnalysis() {
+	evalState.inFlight = false;
+	if (evalState.refreshQueued) {
+		evalState.refreshQueued = false;
+		analyzeWithEngine(true);
+	}
+}
+
 async function analyzeWithEngine(forceRefresh = false) {
-	if (evalState.inFlight) return;
+	if (evalState.inFlight) {
+		// A state change arrived while a search is running; re-run once it
+		// finishes so the route list always reflects the current board.
+		evalState.refreshQueued = true;
+		return;
+	}
 
 	// PC mode gets much faster once the precomputed legal-board database is
 	// loaded, so kick the (lazy, one-time) fetch off on first use.
@@ -2782,7 +2856,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 			rebuildEvaluationOverlay();
 			setEvalStatus(`PC setup lookup failed: ${error.message}`, true);
 		} finally {
-			evalState.inFlight = false;
+			finishAnalysis();
 		}
 		return;
 	}
@@ -2819,7 +2893,25 @@ async function analyzeWithEngine(forceRefresh = false) {
 					pending_garbage: sentPending,
 				}
 			});
-			if (!data) throw new Error('WASM engine returned no result');
+			if (!data) {
+				if (isPcModeEnabled()) {
+					try {
+						const count = await gomenPcCount();
+						if (count > 0) {
+							evalState.latestData = null;
+							renderRoutesList();
+							rebuildEvaluationOverlay();
+							setEvalStatus(
+								`PC available (${count} line(s)) but the engine could not produce a move line within the budget. Increase the time budget or use the PC preset.`
+							);
+							return;
+						}
+					} catch (error) {
+						// fall through to the generic error
+					}
+				}
+				throw new Error('WASM engine returned no result');
+			}
 		} else {
 			const payload = {
 				board_rows: rows,
@@ -2917,7 +3009,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 			setEvalStatus(`Evaluation failed: ${error.message}`, true);
 		}
 	} finally {
-		evalState.inFlight = false;
+		finishAnalysis();
 	}
 }
 
@@ -3454,52 +3546,61 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	document.getElementById('tc-hd').addEventListener('touchstart', function (e) {
 		input = 'HD';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		hardDrop();
 	});
 
 	document.getElementById('tc-h').addEventListener('touchstart', function (e) {
 		input = 'HL';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		hold();
 	});
 
 	document.getElementById('tc-dr').addEventListener('touchstart', function (e) {
 		input = 'R180';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		rotate('R180');
 	});
 
 	document.getElementById('tc-cc').addEventListener('touchstart', function (e) {
 		input = 'CCW';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		rotate('CCW');
 	});
 
 	document.getElementById('tc-c').addEventListener('touchstart', function (e) {
 		input = 'CW';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		rotate('CW');
 	});
 
 	document.getElementById('tc-d').addEventListener('touchstart', function (e) {
 		input = 'SD';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 		softDrop();
 	});
 
 	document.getElementById('tc-d').addEventListener('touchend', function (e) {
 		input = 'SD';
 		if (keysDown & flags[input]) keysDown ^= flags[input];
+		window.ZZStats?.onKeyUp(input);
 	});
 
 	document.getElementById('tc-r').addEventListener('touchstart', function (e) {
 		input = 'R';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 	});
 
 	document.getElementById('tc-r').addEventListener('touchend', function (e) {
 		input = 'R';
 		if (keysDown & flags[input]) keysDown ^= flags[input];
+		window.ZZStats?.onKeyUp(input);
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
@@ -3508,11 +3609,13 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	document.getElementById('tc-l').addEventListener('touchstart', function (e) {
 		input = 'L';
 		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
 	});
 
 	document.getElementById('tc-l').addEventListener('touchend', function (e) {
 		input = 'L';
 		if (keysDown & flags[input]) keysDown ^= flags[input];
+		window.ZZStats?.onKeyUp(input);
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
@@ -3535,6 +3638,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		
 		if (e.repeat) return; //* if held down, do nothing
 		if (input) {
+			window.ZZStats?.onKeyDown(input);
 			switch (input) {  // handles non-movement keys
 				case 'SD':
 					softDrop();
@@ -3563,6 +3667,15 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				case 'REDO':
 					redo();
 					break;
+				case 'RESET_SESSION':
+					window.ZZStats?.resetSession();
+					break;
+				case 'RESET_QUEUE':
+					window.ZZStats?.resetQueue();
+					break;
+				case 'RESET_QUEUE_HOLD':
+					window.ZZStats?.resetQueueHold();
+					break;
 			}
 		}
 	});
@@ -3577,6 +3690,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				document.activeElement.blur();
 			}
 			if (keysDown & flags[input]) keysDown ^= flags[input];
+			window.ZZStats?.onKeyUp(input);
 			// remove key from keysDown
 			if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 				dasID++;
@@ -3798,7 +3912,27 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		setShape(true);
 		clearActive();
 		
+		const b2bBefore = b2b;
+		const comboBefore = combo;
 		cleared = checkLines();
+		window.ZZStats?.onPlacement({
+			piece,
+			x: xPOS,
+			y: yPOS,
+			rot,
+			cleared,
+			tspin,
+			mini,
+			allspinMini,
+			pc,
+			b2b,
+			combo,
+			b2bBefore,
+			comboBefore,
+			b2bEligible,
+			lastKick,
+			lastRotationType,
+		});
 		newPiece();
 
         if (cheese) {
@@ -3843,6 +3977,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		setShape();
 		updateQueue();
 		lastAction = 'HOLD';
+		window.ZZStats?.onHold();
 	}
 
 	evalControlApi = {
@@ -4110,6 +4245,7 @@ function shuffleQueue() {
 	updateGhost();
 	setShape();
 	updateHistory();
+	window.ZZStats?.onNewPiece(piece);
 }
 
 function shuffleQueuePlusHold() {
@@ -4140,6 +4276,7 @@ function shuffleQueuePlusHold() {
 	updateGhost();
 	setShape();
 	updateHistory();
+	window.ZZStats?.onNewPiece(piece);
 }
 
 function updateKickTable() {
