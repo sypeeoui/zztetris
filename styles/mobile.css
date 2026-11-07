@@ -74,7 +74,7 @@ html.mobile #b {
 	max-height: 100%;
 	image-rendering: pixelated;
 	touch-action: none;
-	pointer-events: none;
+	pointer-events: auto;
 }
 
 /* Notifications float over the board instead of living in the hidden queue. */
@@ -106,23 +106,40 @@ html.mobile #notif {
 /* Top HUD: hold + next, landscape only by default. */
 html.mobile #zzMobileHud {
 	position: fixed;
-	top: calc(6px + env(safe-area-inset-top));
-	left: 50%;
-	transform: translateX(-50%);
-	display: flex;
-	align-items: center;
-	gap: 8px;
+	inset: 0;
 	z-index: 40;
 	pointer-events: none;
 }
 
 html.mobile #zzMobileHud canvas {
-	height: 40px;
-	width: auto;
+	position: fixed;
+	box-sizing: border-box;
 	image-rendering: pixelated;
-	background: rgba(0, 0, 0, 0.25);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.15);
 	border-radius: 4px;
+	pointer-events: auto;
+	touch-action: manipulation;
+}
+
+html.mobile #zzHoldMini {
+	top: calc(6px + env(safe-area-inset-top));
+	left: calc(4px + env(safe-area-inset-left));
+	width: 54px;
+	height: 37px;
+}
+
+html.mobile #zzNextMini {
+	top: calc(56px + env(safe-area-inset-top));
+	right: calc(4px + env(safe-area-inset-right));
+	width: 54px;
+	height: 177px;
+}
+
+html.mobile[data-mobile-orientation='landscape'] #zzNextMini {
+	top: calc(6px + env(safe-area-inset-top));
+	left: calc(66px + env(safe-area-inset-left));
+	right: auto;
 }
 
 html.mobile #zzMobileHud[hidden] {
@@ -409,12 +426,19 @@ html.mobile .zzSheetRow select {
 	font-size: 13px;
 }
 
-html.mobile .zzSheetRow .zzVal {
-	flex: 0 0 52px;
-	text-align: right;
+html.mobile .zzSheetRow .zzNum {
+	flex: 0 0 64px;
+	width: 64px;
+	min-height: 32px;
+	background: #111;
+	color: #fff;
+	border: 1px solid #444;
+	border-radius: 6px;
+	padding: 3px 4px;
 	font-family: monospace;
 	font-size: 13px;
-	color: #9e9e9e;
+	text-align: right;
+	box-sizing: border-box;
 }
 
 html.mobile .zzTabs {

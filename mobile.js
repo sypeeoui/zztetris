@@ -51,7 +51,7 @@
 	}
 
 	const DEFAULT_CONFIG = {
-		version: 1,
+		version: 2,
 		portrait: {
 			split: 0.5,
 			left: {
@@ -89,8 +89,8 @@
 			buttons: defaultButtons('techmino'),
 		},
 		display: {
-			showHold: false,
-			showNext: false,
+			showHold: true,
+			showNext: true,
 		},
 		pauseCorner: 'top-right',
 	};
@@ -127,7 +127,14 @@
 		} catch (error) {
 			stored = null;
 		}
-		return mergeDeep(clone(DEFAULT_CONFIG), stored);
+		const merged = mergeDeep(clone(DEFAULT_CONFIG), stored);
+		// v1 hid the hold/next strips by default. Show them once on upgrade;
+		// the user can still hide them again in Settings.
+		if (!stored || stored.version !== 2) {
+			merged.version = 2;
+			merged.display = { showHold: true, showNext: true };
+		}
+		return merged;
 	}
 
 	let config = loadConfig();
@@ -210,6 +217,7 @@
 	buildBoardSheet();
 	buildQueueSheet();
 	buildModeMenu();
+	setupBoardDrawing();
 
 	updateOrientation();
 	window.addEventListener('resize', updateOrientation);
@@ -271,6 +279,7 @@
 		const controlsHeight = Math.round(Math.min(Math.max(window.innerHeight * 0.24, 120), 200));
 		root.style.setProperty('--zz-controls-height', controlsHeight + 'px');
 		updateHudVisibility();
+		applyPauseCorner();
 		requestAnimationFrame(resizeBoard);
 	}
 
@@ -299,26 +308,38 @@
 		const hud = document.createElement('div');
 		hud.id = 'zzMobileHud';
 		hud.innerHTML =
-			'<canvas id="zzHoldMini" width="60" height="40"></canvas>' +
-			'<canvas id="zzNextMini" width="180" height="40"></canvas>';
+			'<canvas id="zzHoldMini" width="52" height="35" title="Hold — open board settings"></canvas>' +
+			'<canvas id="zzNextMini" width="52" height="175" title="Next queue — open queue settings"></canvas>';
 		document.body.appendChild(hud);
+		const hold = $('zzHoldMini');
+		const next = $('zzNextMini');
+		if (hold) {
+			hold.addEventListener('click', () => {
+				setPaused(true);
+				openSubSheet('zzBoardSheet', 'zzPauseMenu');
+			});
+		}
+		if (next) {
+			next.addEventListener('click', () => {
+				setPaused(true);
+				openSubSheet('zzQueueSheet', 'zzPauseMenu');
+			});
+		}
 		updateHudVisibility();
 	}
 
 	function updateHudVisibility() {
 		const hud = $('zzMobileHud');
 		if (!hud) return;
-		const showHud =
-			orientation === 'landscape' && (config.display.showHold || config.display.showNext);
+		const showHud = config.display.showHold || config.display.showNext;
 		hud.hidden = !showHud;
 		const hold = $('zzHoldMini');
 		const next = $('zzNextMini');
-		if (hold) hold.hidden = !(showHud && config.display.showHold);
-		if (next) next.hidden = !(showHud && config.display.showNext);
+		if (hold) hold.hidden = !config.display.showHold;
+		if (next) next.hidden = !config.display.showNext;
 	}
 
 	function drawHud() {
-		if (orientation !== 'landscape') return;
 		const hold = $('zzHoldMini');
 		const next = $('zzNextMini');
 		if (hold && !hold.hidden) {
@@ -332,15 +353,15 @@
 			const ctx = next.getContext('2d');
 			ctx.clearRect(0, 0, next.width, next.height);
 			if (typeof queue !== 'undefined' && typeof imgs !== 'undefined') {
-				let x = 0;
+				let y = 0;
 				let count = 0;
 				for (const piece of queue) {
 					if (piece === '|') continue;
 					if (!imgs[piece]) continue;
-					ctx.drawImage(imgs[piece], x, 0, 60, 40);
-					x += 60;
+					ctx.drawImage(imgs[piece], 0, y, 52, 35);
+					y += 35;
 					count++;
-					if (count >= 3) break;
+					if (count >= 5) break;
 				}
 			}
 		}
@@ -375,6 +396,23 @@
 			: 'auto';
 		button.style.left = corner.endsWith('left') ? 'calc(8px + env(safe-area-inset-left))' : 'auto';
 		button.style.right = corner.endsWith('right') ? 'calc(8px + env(safe-area-inset-right))' : 'auto';
+
+		// Keep the hold/next strips clear of the pause button.
+		const hold = $('zzHoldMini');
+		const next = $('zzNextMini');
+		if (hold) {
+			hold.style.top =
+				corner === 'top-left'
+					? 'calc(56px + env(safe-area-inset-top))'
+					: 'calc(6px + env(safe-area-inset-top))';
+		}
+		if (next) {
+			const nextTop =
+				orientation === 'portrait' && corner === 'top-right'
+					? 'calc(56px + env(safe-area-inset-top))'
+					: 'calc(6px + env(safe-area-inset-top))';
+			next.style.top = nextTop;
+		}
 	}
 
 	function setPaused(value) {
@@ -690,23 +728,23 @@
 			'<button class="zzTab" data-tab="app">App</button>' +
 			'</div>' +
 			'<div class="zzTabPanel zz-active" data-panel="handling">' +
-			'<div class="zzSheetRow"><label>DAS</label><input type="range" id="zzDas" min="0" max="750" step="10"><span class="zzVal" id="zzDasVal"></span></div>' +
-			'<div class="zzSheetRow"><label>ARR</label><input type="range" id="zzArr" min="0" max="500" step="5"><span class="zzVal" id="zzArrVal"></span></div>' +
-			'<div class="zzSheetRow"><label>SDR</label><input type="range" id="zzSdr" min="0" max="250" step="5"><span class="zzVal" id="zzSdrVal"></span></div>' +
+			'<div class="zzSheetRow"><label>DAS</label><input type="range" id="zzDas" min="0" max="750" step="1"><input type="number" class="zzNum" id="zzDasNum" min="0" max="750" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>ARR</label><input type="range" id="zzArr" min="0" max="500" step="1"><input type="number" class="zzNum" id="zzArrNum" min="0" max="500" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>SDR</label><input type="range" id="zzSdr" min="0" max="250" step="1"><input type="number" class="zzNum" id="zzSdrNum" min="0" max="250" step="1" inputmode="numeric"></div>' +
 			'<p class="zzHint">DAS is the delay before auto-repeat, ARR is the repeat rate, SDR is the soft-drop rate.</p>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="portrait">' +
 			'<div class="zzMapGrid"><div class="zzMapCard" id="zzLeftMap"></div><div class="zzMapCard" id="zzRightMap"></div></div>' +
-			'<div class="zzSheetRow"><label>Swipe distance</label><input type="range" id="zzSwipe" min="12" max="60" step="2"><span class="zzVal" id="zzSwipeVal"></span></div>' +
-			'<div class="zzSheetRow"><label>Tap max</label><input type="range" id="zzTapMax" min="80" max="400" step="10"><span class="zzVal" id="zzTapMaxVal"></span></div>' +
-			'<div class="zzSheetRow"><label>Long press</label><input type="range" id="zzLongPress" min="150" max="600" step="10"><span class="zzVal" id="zzLongPressVal"></span></div>' +
-			'<div class="zzSheetRow"><label>Dead zone</label><input type="range" id="zzDeadZone" min="2" max="24" step="1"><span class="zzVal" id="zzDeadZoneVal"></span></div>' +
-			'<div class="zzSheetRow"><label>Pad split</label><input type="range" id="zzPadSplit" min="30" max="70" step="1"><span class="zzVal" id="zzPadSplitVal"></span></div>' +
+			'<div class="zzSheetRow"><label>Swipe distance</label><input type="range" id="zzSwipe" min="12" max="60" step="1"><input type="number" class="zzNum" id="zzSwipeNum" min="12" max="60" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Tap max</label><input type="range" id="zzTapMax" min="80" max="400" step="1"><input type="number" class="zzNum" id="zzTapMaxNum" min="80" max="400" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Long press</label><input type="range" id="zzLongPress" min="150" max="600" step="1"><input type="number" class="zzNum" id="zzLongPressNum" min="150" max="600" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Dead zone</label><input type="range" id="zzDeadZone" min="2" max="24" step="1"><input type="number" class="zzNum" id="zzDeadZoneNum" min="2" max="24" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Pad split</label><input type="range" id="zzPadSplit" min="30" max="70" step="1"><input type="number" class="zzNum" id="zzPadSplitNum" min="30" max="70" step="1" inputmode="numeric"></div>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="landscape">' +
 			'<div class="zzSheetRow"><label>Preset</label><select id="zzLandscapePreset"><option value="techmino">Techmino</option><option value="left-handed">Left-handed</option><option value="custom">Custom</option></select></div>' +
-			'<div class="zzSheetRow"><label>Button size</label><input type="range" id="zzBtnSize" min="44" max="96" step="4"><span class="zzVal" id="zzBtnSizeVal"></span></div>' +
-			'<div class="zzSheetRow"><label>Opacity</label><input type="range" id="zzBtnOpacity" min="20" max="100" step="5"><span class="zzVal" id="zzBtnOpacityVal"></span></div>' +
+			'<div class="zzSheetRow"><label>Button size</label><input type="range" id="zzBtnSize" min="44" max="96" step="1"><input type="number" class="zzNum" id="zzBtnSizeNum" min="44" max="96" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Opacity</label><input type="range" id="zzBtnOpacity" min="20" max="100" step="1"><input type="number" class="zzNum" id="zzBtnOpacityNum" min="20" max="100" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Haptics</label><input type="checkbox" id="zzHaptics"></div>' +
 			'<div class="zzMapCard" id="zzButtonMap"></div>' +
 			'</div>' +
@@ -751,33 +789,58 @@
 		const das = $('zzDas');
 		const arr = $('zzArr');
 		const sdr = $('zzSdr');
-		const dasVal = $('zzDasVal');
-		const arrVal = $('zzArrVal');
-		const sdrVal = $('zzSdrVal');
-		if (!das || !arr || !sdr) return;
+		const dasNum = $('zzDasNum');
+		const arrNum = $('zzArrNum');
+		const sdrNum = $('zzSdrNum');
+		if (!das || !arr || !sdr || !dasNum || !arrNum || !sdrNum) return;
 
 		function sync() {
 			das.value = DAS;
 			arr.value = ARR;
 			sdr.value = SDR;
-			dasVal.textContent = DAS + 'ms';
-			arrVal.textContent = ARR + 'ms';
-			sdrVal.textContent = SDR + 'ms';
+			dasNum.value = DAS;
+			arrNum.value = ARR;
+			sdrNum.value = SDR;
 		}
 
-		function update() {
+		function updateFromSlider() {
 			DAS = parseInt(das.value, 10);
 			ARR = parseInt(arr.value, 10);
 			SDR = parseInt(sdr.value, 10);
-			dasVal.textContent = DAS + 'ms';
-			arrVal.textContent = ARR + 'ms';
-			sdrVal.textContent = SDR + 'ms';
+			dasNum.value = DAS;
+			arrNum.value = ARR;
+			sdrNum.value = SDR;
 			saveHandling();
 		}
 
-		das.addEventListener('input', update);
-		arr.addEventListener('input', update);
-		sdr.addEventListener('input', update);
+		function updateFromNumber() {
+			const dasValue = parseInt(dasNum.value, 10);
+			const arrValue = parseInt(arrNum.value, 10);
+			const sdrValue = parseInt(sdrNum.value, 10);
+			if (Number.isFinite(dasValue)) DAS = Math.min(750, Math.max(0, dasValue));
+			if (Number.isFinite(arrValue)) ARR = Math.min(500, Math.max(0, arrValue));
+			if (Number.isFinite(sdrValue)) SDR = Math.min(250, Math.max(0, sdrValue));
+			das.value = DAS;
+			arr.value = ARR;
+			sdr.value = SDR;
+			saveHandling();
+		}
+
+		function clampNumbers() {
+			dasNum.value = DAS;
+			arrNum.value = ARR;
+			sdrNum.value = SDR;
+		}
+
+		das.addEventListener('input', updateFromSlider);
+		arr.addEventListener('input', updateFromSlider);
+		sdr.addEventListener('input', updateFromSlider);
+		dasNum.addEventListener('input', updateFromNumber);
+		arrNum.addEventListener('input', updateFromNumber);
+		sdrNum.addEventListener('input', updateFromNumber);
+		dasNum.addEventListener('change', clampNumbers);
+		arrNum.addEventListener('change', clampNumbers);
+		sdrNum.addEventListener('change', clampNumbers);
 		sync();
 	}
 
@@ -852,10 +915,10 @@
 		const tapMax = $('zzTapMax');
 		const longPress = $('zzLongPress');
 		const deadZone = $('zzDeadZone');
-		const swipeVal = $('zzSwipeVal');
-		const tapMaxVal = $('zzTapMaxVal');
-		const longPressVal = $('zzLongPressVal');
-		const deadZoneVal = $('zzDeadZoneVal');
+		const swipeNum = $('zzSwipeNum');
+		const tapMaxNum = $('zzTapMaxNum');
+		const longPressNum = $('zzLongPressNum');
+		const deadZoneNum = $('zzDeadZoneNum');
 		if (!swipe || !tapMax || !longPress || !deadZone) return;
 
 		function sync() {
@@ -863,42 +926,94 @@
 			tapMax.value = thresholds.tapMax;
 			longPress.value = thresholds.longPress;
 			deadZone.value = thresholds.deadZone;
-			swipeVal.textContent = thresholds.swipe + 'px';
-			tapMaxVal.textContent = thresholds.tapMax + 'ms';
-			longPressVal.textContent = thresholds.longPress + 'ms';
-			deadZoneVal.textContent = thresholds.deadZone + 'px';
+			swipeNum.value = thresholds.swipe;
+			tapMaxNum.value = thresholds.tapMax;
+			longPressNum.value = thresholds.longPress;
+			deadZoneNum.value = thresholds.deadZone;
 		}
 
-		function update() {
+		function updateFromSlider() {
 			thresholds.swipe = parseInt(swipe.value, 10);
 			thresholds.tapMax = parseInt(tapMax.value, 10);
 			thresholds.longPress = parseInt(longPress.value, 10);
 			thresholds.deadZone = parseInt(deadZone.value, 10);
-			swipeVal.textContent = thresholds.swipe + 'px';
-			tapMaxVal.textContent = thresholds.tapMax + 'ms';
-			longPressVal.textContent = thresholds.longPress + 'ms';
-			deadZoneVal.textContent = thresholds.deadZone + 'px';
+			swipeNum.value = thresholds.swipe;
+			tapMaxNum.value = thresholds.tapMax;
+			longPressNum.value = thresholds.longPress;
+			deadZoneNum.value = thresholds.deadZone;
 			saveConfig();
 		}
 
-		swipe.addEventListener('input', update);
-		tapMax.addEventListener('input', update);
-		longPress.addEventListener('input', update);
-		deadZone.addEventListener('input', update);
+		function updateFromNumber() {
+			const swipeValue = parseInt(swipeNum.value, 10);
+			const tapMaxValue = parseInt(tapMaxNum.value, 10);
+			const longPressValue = parseInt(longPressNum.value, 10);
+			const deadZoneValue = parseInt(deadZoneNum.value, 10);
+			if (Number.isFinite(swipeValue)) thresholds.swipe = Math.min(60, Math.max(12, swipeValue));
+			if (Number.isFinite(tapMaxValue)) thresholds.tapMax = Math.min(400, Math.max(80, tapMaxValue));
+			if (Number.isFinite(longPressValue))
+				thresholds.longPress = Math.min(600, Math.max(150, longPressValue));
+			if (Number.isFinite(deadZoneValue))
+				thresholds.deadZone = Math.min(24, Math.max(2, deadZoneValue));
+			swipe.value = thresholds.swipe;
+			tapMax.value = thresholds.tapMax;
+			longPress.value = thresholds.longPress;
+			deadZone.value = thresholds.deadZone;
+			saveConfig();
+		}
+
+		function clampNumbers() {
+			swipeNum.value = thresholds.swipe;
+			tapMaxNum.value = thresholds.tapMax;
+			longPressNum.value = thresholds.longPress;
+			deadZoneNum.value = thresholds.deadZone;
+		}
+
+		swipe.addEventListener('input', updateFromSlider);
+		tapMax.addEventListener('input', updateFromSlider);
+		longPress.addEventListener('input', updateFromSlider);
+		deadZone.addEventListener('input', updateFromSlider);
+		swipeNum.addEventListener('input', updateFromNumber);
+		tapMaxNum.addEventListener('input', updateFromNumber);
+		longPressNum.addEventListener('input', updateFromNumber);
+		deadZoneNum.addEventListener('input', updateFromNumber);
+		swipeNum.addEventListener('change', clampNumbers);
+		tapMaxNum.addEventListener('change', clampNumbers);
+		longPressNum.addEventListener('change', clampNumbers);
+		deadZoneNum.addEventListener('change', clampNumbers);
 		sync();
 	}
 
 	function setupPortraitLayout() {
 		const split = $('zzPadSplit');
-		const splitVal = $('zzPadSplitVal');
-		if (!split) return;
-		split.value = Math.round((config.portrait.split || 0.5) * 100);
-		splitVal.textContent = split.value + '%';
-		split.addEventListener('input', () => {
-			config.portrait.split = parseInt(split.value, 10) / 100;
-			splitVal.textContent = split.value + '%';
+		const splitNum = $('zzPadSplitNum');
+		if (!split || !splitNum) return;
+		const initial = Math.round((config.portrait.split || 0.5) * 100);
+		split.value = initial;
+		splitNum.value = initial;
+
+		function updateFromSlider() {
+			const value = parseInt(split.value, 10);
+			config.portrait.split = value / 100;
+			splitNum.value = value;
 			applyPortraitSplit();
 			saveConfig();
+		}
+
+		function updateFromNumber() {
+			const value = parseInt(splitNum.value, 10);
+			if (!Number.isFinite(value)) return;
+			const clamped = Math.min(70, Math.max(30, value));
+			config.portrait.split = clamped / 100;
+			split.value = clamped;
+			applyPortraitSplit();
+			saveConfig();
+		}
+
+		split.addEventListener('input', updateFromSlider);
+		splitNum.addEventListener('input', updateFromNumber);
+		splitNum.addEventListener('change', () => {
+			splitNum.value = Math.round((config.portrait.split || 0.5) * 100);
 		});
 	}
 
@@ -907,29 +1022,60 @@
 		const size = $('zzBtnSize');
 		const opacity = $('zzBtnOpacity');
 		const haptics = $('zzHaptics');
-		const sizeVal = $('zzBtnSizeVal');
-		const opacityVal = $('zzBtnOpacityVal');
+		const sizeNum = $('zzBtnSizeNum');
+		const opacityNum = $('zzBtnOpacityNum');
 		if (!preset || !size || !opacity || !haptics) return;
 
 		preset.value = config.landscape.preset;
 		size.value = config.landscape.size;
 		opacity.value = config.landscape.opacity;
 		haptics.checked = config.landscape.haptics;
-		sizeVal.textContent = config.landscape.size + 'px';
-		opacityVal.textContent = config.landscape.opacity + '%';
+		sizeNum.value = config.landscape.size;
+		opacityNum.value = config.landscape.opacity;
 
 		preset.addEventListener('change', () => applyPreset(preset.value));
-		size.addEventListener('input', () => {
+
+		function updateSizeFromSlider() {
 			config.landscape.size = parseInt(size.value, 10);
-			sizeVal.textContent = config.landscape.size + 'px';
+			sizeNum.value = config.landscape.size;
 			applyLandscapeVars();
 			saveConfig();
-		});
-		opacity.addEventListener('input', () => {
+		}
+
+		function updateSizeFromNumber() {
+			const value = parseInt(sizeNum.value, 10);
+			if (!Number.isFinite(value)) return;
+			config.landscape.size = Math.min(96, Math.max(44, value));
+			size.value = config.landscape.size;
+			applyLandscapeVars();
+			saveConfig();
+		}
+
+		function updateOpacityFromSlider() {
 			config.landscape.opacity = parseInt(opacity.value, 10);
-			opacityVal.textContent = config.landscape.opacity + '%';
+			opacityNum.value = config.landscape.opacity;
 			applyLandscapeVars();
 			saveConfig();
+		}
+
+		function updateOpacityFromNumber() {
+			const value = parseInt(opacityNum.value, 10);
+			if (!Number.isFinite(value)) return;
+			config.landscape.opacity = Math.min(100, Math.max(20, value));
+			opacity.value = config.landscape.opacity;
+			applyLandscapeVars();
+			saveConfig();
+		}
+
+		size.addEventListener('input', updateSizeFromSlider);
+		opacity.addEventListener('input', updateOpacityFromSlider);
+		sizeNum.addEventListener('input', updateSizeFromNumber);
+		opacityNum.addEventListener('input', updateOpacityFromNumber);
+		sizeNum.addEventListener('change', () => {
+			sizeNum.value = config.landscape.size;
+		});
+		opacityNum.addEventListener('change', () => {
+			opacityNum.value = config.landscape.opacity;
 		});
 		haptics.addEventListener('change', () => {
 			config.landscape.haptics = haptics.checked;
@@ -1147,5 +1293,66 @@
 	function openModeMenu() {
 		setPaused(true);
 		show('zzModeMenu');
+	}
+
+	// ---------------------------------------------------------------------
+	// Board drawing
+	// ---------------------------------------------------------------------
+
+	function setupBoardDrawing() {
+		const canvas = $('b');
+		if (!canvas) return;
+
+		// The desktop mouse handlers assume the unscaled canvas and its 18px
+		// padding. Replace them with pointer handlers that use the displayed
+		// cell size so drawing works on a scaled mobile board.
+		canvas.onmousedown = null;
+		canvas.onmousemove = null;
+
+		let drawing = false;
+		let drawMode = false;
+
+		function cellFromEvent(event) {
+			const rect = canvas.getBoundingClientRect();
+			const x = Math.floor((event.clientX - rect.left) / (rect.width / 10));
+			const y = Math.floor((event.clientY - rect.top) / (rect.height / 22));
+			return { x, y };
+		}
+
+		function applyCell(x, y, first) {
+			if (x < 0 || x > 9 || y < 0 || y > 21) return;
+			const row = boardSize[1] + y - hiddenRows - 2;
+			if (row < 0 || row >= board.length) return;
+			if (first) drawMode = board[row][x].t != 1;
+			board[row][x] = drawMode ? { t: 1, c: paintbucketColor() } : { t: 0, c: '' };
+			updateGhost();
+		}
+
+		canvas.addEventListener('pointerdown', (event) => {
+			if (paused) return;
+			event.preventDefault();
+			try {
+				canvas.setPointerCapture(event.pointerId);
+			} catch (error) {
+				// Pointer capture is best-effort.
+			}
+			drawing = true;
+			const { x, y } = cellFromEvent(event);
+			applyCell(x, y, true);
+		});
+
+		canvas.addEventListener('pointermove', (event) => {
+			if (!drawing) return;
+			event.preventDefault();
+			const { x, y } = cellFromEvent(event);
+			applyCell(x, y, false);
+		});
+
+		const stop = (event) => {
+			drawing = false;
+			if (event) event.preventDefault();
+		};
+		canvas.addEventListener('pointerup', stop);
+		canvas.addEventListener('pointercancel', stop);
 	}
 })();
