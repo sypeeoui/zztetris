@@ -404,6 +404,64 @@ const wasmHelper = {
 	}
 };
 
+// gomen PC solver client (wirelyre/tetra-tools, GPL-3.0). The solver runs in
+// its own worker with the precomputed legal-board database, so 4-line PC
+// checks are exhaustive and deterministic instead of time-budgeted.
+const gomenSolver = {
+	worker: null,
+	ready: null,
+	nextId: 1,
+	pending: new Map(),
+
+	ensure() {
+		if (this.ready) return this.ready;
+		this.ready = new Promise((resolve, reject) => {
+			try {
+				this.worker = new Worker('./pc-solver/worker.js?v=2');
+			} catch (err) {
+				reject(err);
+				return;
+			}
+			this.worker.addEventListener('message', (event) => {
+				const data = event.data || {};
+				if (data.kind === 'ready') {
+					resolve();
+					return;
+				}
+				if (data.kind === 'error' && data.id === undefined) {
+					reject(new Error(data.error || 'PC solver failed to load'));
+					return;
+				}
+				const pending = this.pending.get(data.id);
+				if (!pending) return;
+				this.pending.delete(data.id);
+				if (data.kind === 'error') pending.reject(new Error(data.error || 'PC solver failed'));
+				else pending.resolve(data);
+			});
+			this.worker.addEventListener('error', (event) => {
+				reject(new Error(event.message || 'PC solver failed to load'));
+			});
+		});
+		return this.ready;
+	},
+
+	async solve({ garbage, queue, hold, physics }) {
+		await this.ensure();
+		const id = this.nextId++;
+		return new Promise((resolve, reject) => {
+			this.pending.set(id, { resolve, reject });
+			this.worker.postMessage({
+				kind: 'solve',
+				id,
+				garbage: garbage.toString(),
+				queue,
+				hold: !!hold,
+				physics: physics || 'TETRIO',
+			});
+		});
+	},
+};
+
 // Lazily fetch the precomputed perfect-clear database (legal-boards.leb128)
 // and hand it to the engine. The engine uses it only to prune the PC search, so
 // loading it late never changes earlier results, just makes later ones faster.
@@ -1337,14 +1395,18 @@ function setupBoardToCells(boardStr) {
 	return cells;
 }
 
-function partitionPieceCells(pieceChar, cells) {
-	// Exact-cover the cells with copies of the given tetromino. A letter may
-	// appear several times (e.g. "IIII"), and pieces can interlock, so a greedy
-	// peel is not enough; backtrack on the first uncovered cell.
+function partitionPieceCellsAll(pieceChar, cells, acc, found, cap) {
+	// Enumerate exact covers of `cells` with copies of the given tetromino.
+	// A terrain can usually be dissected several ways (two I pieces can swap
+	// cells, interlocking pieces can be assigned differently), and only some
+	// dissections are droppable in the queue order, so collect them all.
+	if (found.length >= cap) return;
+	if (cells.length == 0) {
+		found.push(acc.map((part) => ({ move: { ...part.move }, cells: part.cells.slice() })));
+		return;
+	}
 	const base = pieceBaseCoords[pieceChar];
-	if (!base) return null;
-	if (cells.length == 0) return [];
-	if (cells.length % base.length != 0) return null;
+	if (!base || cells.length % base.length != 0) return;
 
 	const first = cells[0];
 	for (let rotation = 0; rotation < 4; rotation++) {
@@ -1367,49 +1429,61 @@ function partitionPieceCells(pieceChar, cells) {
 			if (!ok) continue;
 
 			const remaining = cells.filter((c) => !matched.includes(c));
-			const rest = partitionPieceCells(pieceChar, remaining);
-			if (rest) {
-				return [
-					{ move: { piece: charToEnginePiece[pieceChar], rotation, x: dx, y: dy }, cells: matched },
-					...rest,
-				];
-			}
+			acc.push({ move: { piece: charToEnginePiece[pieceChar], rotation, x: dx, y: dy }, cells: matched });
+			partitionPieceCellsAll(pieceChar, remaining, acc, found, cap);
+			acc.pop();
 		}
 	}
-	return null;
 }
 
-function setupBoardToMoves(boardStr) {
+function enumeratePcSetupDissections(boardStr, cap = 64) {
+	// All ways to cut the setup terrain into its four pieces, as flat move
+	// lists. The caller tries each dissection until one is droppable in the
+	// queue order.
 	const pools = {};
 	for (const cell of setupBoardToCells(boardStr)) {
 		(pools[cell.piece] = pools[cell.piece] || []).push(cell);
 	}
 
-	const moves = [];
+	const perPiece = {};
 	for (const ch of Object.keys(pools)) {
-		const parts = partitionPieceCells(ch, pools[ch]);
-		if (!parts) return [];
-		for (const part of parts) moves.push(part.move);
+		const found = [];
+		partitionPieceCellsAll(ch, pools[ch], [], found, cap);
+		if (!found.length) return [];
+		perPiece[ch] = found;
 	}
-	// Place bottom rows first so the overlay simulation never floats a piece.
-	moves.sort((a, b) => a.y - b.y || a.x - b.x);
-	return moves;
+
+	const chars = Object.keys(perPiece);
+	const out = [];
+	const combine = (idx, acc) => {
+		if (out.length >= cap) return;
+		if (idx === chars.length) {
+			out.push(acc.flat().map((part) => part.move));
+			return;
+		}
+		for (const cover of perPiece[chars[idx]]) {
+			acc.push(cover);
+			combine(idx + 1, acc);
+			acc.pop();
+		}
+	};
+	combine(0, []);
+	return out;
 }
 
 function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece) {
 	// A setup field is only useful if its 4 pieces can actually be placed in
 	// an order the queue allows. Model one hold slot and gravity: a piece can
-	// be dropped into its final cells only when they are free and the piece is
-	// supported from below.
+	// be dropped into its final cells only when they are free, supported from
+	// below, and every cell above them is clear (no tuck or spin needed).
 	//
-	// Returns the order in which the moves (indices into `moves`) can be
-	// played with the given queue, or null if the setup is not buildable. The
-	// order is what the overlay must follow so the highlighted piece is the
-	// one the player can actually place next.
+	// `queuePieces` is the playable queue with bag separators ('|') kept, so
+	// the returned post-setup queue stays bag-accurate. `holdPiece` seeds the
+	// hold slot with the piece already sitting there.
 	//
-	// `holdPiece` seeds the hold slot with the piece already sitting there, so
-	// a setup that needs the held piece first is accepted (the user just presses
-	// hold). It is a piece character or null/undefined.
+	// Returns { order, queue, hold } where `order` is the playable order
+	// (indices into `moves`), `queue` is the remaining queue with separators,
+	// and `hold` is the piece left in the hold slot; null if not buildable.
 	if (!Array.isArray(moves) || moves.length !== 4) return null;
 
 	const targets = moves.map((mv) => ({
@@ -1433,10 +1507,22 @@ function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece
 		for (const c of target.cells) {
 			if (occ.has(c.y * 10 + c.x)) return false;
 		}
+		let supported = false;
 		for (const c of target.cells) {
-			if (c.y === 0 || occ.has((c.y - 1) * 10 + c.x)) return true;
+			if (c.y === 0 || occ.has((c.y - 1) * 10 + c.x)) {
+				supported = true;
+				break;
+			}
 		}
-		return false;
+		if (!supported) return false;
+		// Straight-drop path: nothing may sit above the target cells.
+		for (const c of target.cells) {
+			for (let y = c.y + 1; y < 4; y++) {
+				const own = target.cells.some((o) => o.x === c.x && o.y === y);
+				if (!own && occ.has(y * 10 + c.x)) return false;
+			}
+		}
+		return true;
 	};
 
 	const seen = new Set();
@@ -1446,26 +1532,28 @@ function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece
 		const key = st.queue.join('') + '|' + (st.hold || '_') + '|' + st.mask;
 		if (seen.has(key)) continue;
 		seen.add(key);
-		if (st.mask === fullMask) return st.order;
+		if (st.mask === fullMask) return { order: st.order, queue: st.queue, hold: st.hold };
 
 		const occ = occupiedForMask(st.mask);
-		const current = st.queue.length ? st.queue[0] : null;
+		let qi = 0;
+		while (qi < st.queue.length && st.queue[qi] === '|') qi++;
+		const current = qi < st.queue.length ? st.queue[qi] : null;
 
 		// Push the hold swap first so direct placements (pushed after, and
 		// therefore popped first) are preferred; holding is only used when the
 		// setup genuinely needs it.
 		if (allowHold && current) {
-			const nq = st.queue.slice(1);
-			const nh = current;
-			if (st.hold != null) nq.unshift(st.hold);
-			stack.push({ queue: nq, hold: nh, mask: st.mask, order: st.order });
+			const nq = st.queue
+				.slice(0, qi)
+				.concat(st.hold != null ? [st.hold] : [], st.queue.slice(qi + 1));
+			stack.push({ queue: nq, hold: current, mask: st.mask, order: st.order });
 		}
 
 		if (current) {
 			for (let i = targets.length - 1; i >= 0; i--) {
 				if ((st.mask & (1 << i)) === 0 && targets[i].piece === current && canPlace(targets[i], occ)) {
 					stack.push({
-						queue: st.queue.slice(1),
+						queue: st.queue.slice(0, qi).concat(st.queue.slice(qi + 1)),
 						hold: st.hold,
 						mask: st.mask | (1 << i),
 						order: st.order.concat(i),
@@ -1475,14 +1563,6 @@ function pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece
 		}
 	}
 	return null;
-}
-
-function pcSetupIsBuildableFromMoves(moves, queuePieces, allowHold, holdPiece) {
-	return pcSetupPlacementOrderFromMoves(moves, queuePieces, allowHold, holdPiece) !== null;
-}
-
-function pcSetupIsBuildable(boardStr, queuePieces, allowHold, holdPiece) {
-	return pcSetupIsBuildableFromMoves(setupBoardToMoves(boardStr), queuePieces, allowHold, holdPiece);
 }
 
 function buildPcSetupRoutes(pcCount) {
@@ -1514,24 +1594,41 @@ function buildPcSetupRoutes(pcCount) {
 		}
 	}
 
+	// The queue the setup is played from: active piece first, bag separators
+	// kept so the post-setup queue stays bag-accurate.
+	const playQueue = [];
+	if (piece) playQueue.push(piece);
+	for (const p of queue) playQueue.push(p);
+
 	const routes = [];
 	let idx = 0;
 	for (const combo of combos) {
 		const setups = pcSet[combo];
 		if (!Array.isArray(setups)) continue;
 		for (const setup of setups) {
-			const moves = setupBoardToMoves(setup.board || '');
-			if (!moves.length) continue;
-			const order = pcSetupPlacementOrderFromMoves(moves, firstFive, true, holdP);
-			if (!order) continue;
+			// Try every dissection of the terrain until one is droppable in
+			// the queue order; a terrain that only works with a tuck or spin
+			// is not shown as a followable setup.
+			let chosen = null;
+			for (const moves of enumeratePcSetupDissections(setup.board || '')) {
+				const res = pcSetupPlacementOrderFromMoves(moves, playQueue, true, holdP);
+				if (res) {
+					chosen = { moves, res };
+					break;
+				}
+			}
+			if (!chosen) continue;
 			const prob = parseFloat(String(setup.prob || '').replace('%', '').trim());
 			routes.push({
 				key: `pc_setup_${idx++}`,
 				label: `PC ${combo}${Number.isFinite(prob) ? ` ${prob.toFixed(1)}%` : ''}`,
-				moves,
+				moves: chosen.moves,
 				// Playable order (indices into `moves`) so the overlay can show
 				// the piece the queue actually allows next.
-				orderedMoves: order.map((i) => moves[i]),
+				orderedMoves: chosen.res.order.map((i) => chosen.moves[i]),
+				// Queue and hold after the setup, bag separators preserved.
+				postQueue: chosen.res.queue,
+				postHold: chosen.res.hold,
 				score: Number.isFinite(prob) ? prob : 0,
 				probability: Number.isFinite(prob) ? prob / 100 : null,
 				hold_used: false,
@@ -1587,26 +1684,6 @@ function dedupePcSetupRoutes(routes) {
 	return unique;
 }
 
-function consumeQueuePieces(usedPieces) {
-	const seq = [];
-	if (piece) seq.push(piece);
-	for (const p of queue) seq.push(p);
-
-	for (const p of usedPieces) {
-		const i = seq.indexOf(p);
-		if (i >= 0) seq.splice(i, 1);
-	}
-
-	while (seq.length < 10) {
-		const shuf = names.shuffle();
-		for (const p of shuf) seq.push(p);
-		seq.push('|');
-	}
-	if (seq[0] == '|') seq.shift();
-	piece = seq.shift();
-	queue = seq;
-}
-
 function applyPcSetup(route) {
 	if (!route || !route.setup) return false;
 	const cells = setupBoardToCells(route.setup.board);
@@ -1623,7 +1700,17 @@ function applyPcSetup(route) {
 		board[row][cell.x] = { t: 1, c: cell.piece };
 	}
 
-	consumeQueuePieces(route.setup.combo.split(''));
+	// Consume the setup pieces exactly as the verified order did, so the
+	// remaining queue matches what the PC check was run against.
+	const q = (route.postQueue || []).slice();
+	while (q[0] === '|') q.shift();
+	piece = q.shift() || '';
+	queue = q;
+	holdP = route.postHold || '';
+	while (queue.length < 10) {
+		for (const p of names.shuffle()) queue.push(p);
+		queue.push('|');
+	}
 	xPOS = spawn[0];
 	yPOS = spawn[1];
 	rot = 0;
@@ -1639,99 +1726,60 @@ function applyPcSetup(route) {
 	return true;
 }
 
-// Board and remaining queue after playing a 4-piece setup, computed without
-// touching the live game state. This is what the engine searches from when it
-// verifies that a setup really reaches a perfect clear with the pieces the
-// player actually has.
-function pcSetupPostState(route) {
-	const rows = new Array(40).fill(0);
-	for (const cell of setupBoardToCells(route.setup.board)) {
-		if (cell.x >= 0 && cell.x < 10 && cell.y >= 0 && cell.y < 40) {
-			rows[cell.y] |= 1 << cell.x;
+// gomen models the queue as concrete pieces followed by bag wildcards. Long
+// concrete chains (>= 8 pieces) are mis-solved by gomen, so the concrete
+// prefix is capped at the current bag remainder; complete bags after it are
+// passed as bag wildcards with their exact piece multiset.
+function pcSetupGomenQueueSpec(postQueue) {
+	const bags = [];
+	let current = [];
+	for (const p of postQueue || []) {
+		if (p === '|') {
+			bags.push(current);
+			current = [];
+		} else {
+			current.push(p);
 		}
 	}
+	if (current.length) bags.push(current);
 
-	const seq = [];
-	if (piece) seq.push(piece);
-	for (const p of queue) if (p != '|') seq.push(p);
-
-	const used = route.setup.combo.split('');
-	const usedHold = holdP ? used.includes(holdP) : false;
-	if (usedHold) used.splice(used.indexOf(holdP), 1);
-	for (const p of used) {
-		const i = seq.indexOf(p);
-		if (i >= 0) seq.splice(i, 1);
+	const strict = (bags.shift() || []).slice(0, 7).join('');
+	let spec = strict;
+	for (const bag of bags) {
+		if (bag.length) spec += `[${bag.join('')}]`;
 	}
-
-	// Extend with whole 7-bags so the PC search always has enough queue.
-	while (seq.length < 8) {
-		for (const p of names.shuffle()) seq.push(p);
-	}
-
-	return {
-		rows,
-		piece: seq.shift() || null,
-		queue: seq,
-		hold: usedHold ? null : holdP || null,
-	};
+	spec += '[IJLOSTZ]2';
+	return { spec, strictLength: strict.length };
 }
 
-async function runPcSetupCheck(post, budgetMs) {
-	if (!post || !post.piece) return null;
-	const pieceId = charToEnginePiece[post.piece];
-	if (pieceId === undefined) return null;
-	const queueIds = post.queue
-		.map((p) => charToEnginePiece[p])
-		.filter((v) => v !== undefined)
-		.slice(0, 14);
-	const holdId = post.hold ? charToEnginePiece[post.hold] : null;
-	const overrides = {
-		pc_mode: true,
-		time_budget_ms: budgetMs,
-		depth: Math.floor(readNumberInput('evalDepth', 14, 1)),
-		extend_queue_7bag: !!getEvalElement('evalExtendQueue')?.checked,
-		b2b: currentB2BForEngine(),
-		combo: currentComboForEngine(),
-		pending_garbage: 0,
-	};
-	return wasmHelper.findBestMove('fusion', {
-		rows: post.rows,
-		pieceId,
-		queue: queueIds,
-		holdId,
-		overrides,
-	});
-}
-
-// Ask the engine whether each setup reaches a PC, highest probability first,
-// until the shared time budget runs out. Verification stops at the first
-// confirmed PC: the route list shows the playable line instead of burning the
-// budget re-checking setups the player is unlikely to use.
-async function verifyPcSetupRoutes(routes, totalBudgetMs) {
-	const start = Date.now();
+// Ask the gomen solver whether each setup reaches a PC with the queue the
+// player actually has. The solver is exhaustive for the 4-row window, so the
+// answer is deterministic and does not depend on a time budget.
+async function verifyPcSetupRoutes(routes) {
 	let anyVerified = false;
 	let anyChecked = false;
 	for (const route of routes) {
 		if (!route.setup) continue;
-		const elapsed = Date.now() - start;
-		if (anyVerified || elapsed >= totalBudgetMs) {
-			route.pcCheck = 'skipped';
-			updatePcSetupRouteItem(route);
-			continue;
-		}
-		const remaining = totalBudgetMs - elapsed;
-		// The PC search spends up to a third of this on the no-clear 4-row scan
-		// and the rest on the general DFS; mid-clear continuations (rows fall)
-		// routinely need ~600ms of DFS, so allow up to 800ms per setup.
-		const perSetup = Math.max(80, Math.min(800, remaining));
 		try {
-			const data = await runPcSetupCheck(pcSetupPostState(route), perSetup);
-			route.pcCheck = data && data.pv && data.pv.length ? 'verified' : 'none';
-			anyChecked = true;
-			if (route.pcCheck === 'verified') {
-				route.pcPv = data.pv;
-				anyVerified = true;
+			let garbage = 0n;
+			for (const cell of setupBoardToCells(route.setup.board)) {
+				if (cell.x >= 0 && cell.x < 10 && cell.y >= 0 && cell.y < 4) {
+					garbage |= 1n << BigInt(cell.y * 10 + cell.x);
+				}
 			}
+			const { spec, strictLength } = pcSetupGomenQueueSpec(route.postQueue);
+			let data = await gomenSolver.solve({ garbage, queue: spec, hold: true });
+			let count = data.count;
+			// gomen's hold slot starts empty; a full hold slot is not modelled,
+			// so retry with the held piece as the next piece.
+			if (!count && route.postHold && strictLength < 7) {
+				data = await gomenSolver.solve({ garbage, queue: route.postHold + spec, hold: true });
+				count = data.count;
+			}
+			route.pcCheck = count > 0 ? 'verified' : 'none';
+			route.pcSolutions = data.solutions || [];
+			anyChecked = true;
+			if (route.pcCheck === 'verified') anyVerified = true;
 		} catch (error) {
 			route.pcCheck = 'unchecked';
 		}
@@ -2660,6 +2708,9 @@ async function analyzeWithEngine(forceRefresh = false) {
 		evalState.inFlight = true;
 		evalState.lastRequestAt = Date.now();
 		setEvalStatus('Looking up PC setups for an empty board...');
+		// Warm the gomen solver while the setup tables load; the PC checks
+		// below run on it.
+		gomenSolver.ensure().catch(() => {});
 		try {
 			await loadPcSetupData();
 			const bagPieces = currentBagPieces();
@@ -2706,8 +2757,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 				setEvalStatus(
 					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Checking which setups reach a PC...`
 				);
-				const budget = Math.max(1200, Math.floor(readNumberInput('evalTimeBudgetMs', 1200, 1)));
-				const { anyVerified, anyChecked } = await verifyPcSetupRoutes(routes, budget);
+				const { anyVerified, anyChecked } = await verifyPcSetupRoutes(routes);
 				if (anyChecked && !anyVerified) {
 					// No setup clears immediately. Keep the same fields but mark
 					// them as 4-line PC continuations instead of dead ends.

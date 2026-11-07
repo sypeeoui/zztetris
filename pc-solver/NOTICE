@@ -1,0 +1,15 @@
+gomen PC solver (vendored)
+==========================
+
+Files in this directory are taken from wirelyre/tetra-tools:
+
+  https://github.com/wirelyre/tetra-tools
+  gomen 0.3.1 (October 2023)
+
+  pkg/gomen.js       wasm-bindgen glue (unmodified)
+  pkg/gomen_bg.wasm  gomen solver (unmodified, sha256
+                     f41ade418720da5bca4cf443d0d3d05c0036983600227059bad9be06ca89b2ff)
+  worker.js          adapted worker wrapper (loads ../legal-boards.leb128)
+
+License: GPL-3.0-or-later. The solver is loaded as a separate worker
+component; see the upstream repository for the full license text.
