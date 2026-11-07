@@ -6,7 +6,9 @@ console.log('ZZTetris PC analyzer build', ZZ_PC_BUILD);
 
 function ctrlsPopup() { // opens a popup window with keybinds
 
-	const p = window.open('controls.html', 'popup', 'width=1200,height=800');
+	// Bump ?v when controls.html changes so an already-open popup reloads
+	// instead of showing the cached page.
+	const p = window.open('controls.html?v=2', 'popup', 'width=1200,height=800');
 	var reloading = false;
 
 	setInterval(() => {
