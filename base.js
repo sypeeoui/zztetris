@@ -1,7 +1,7 @@
 const print = console.log;
 const LS = localStorage; // client side data storage
 // Bumped whenever the analyzer changes so the running build is visible.
-const ZZ_PC_BUILD = '2026-11-07T22:32';
+const ZZ_PC_BUILD = '2026-11-07T22:55';
 console.log('ZZTetris PC analyzer build', ZZ_PC_BUILD);
 
 function ctrlsPopup() { // opens a popup window with keybinds
@@ -433,20 +433,26 @@ const gomenSolver = {
 	ensure() {
 		if (this.ready) return this.ready;
 		this.ready = new Promise((resolve, reject) => {
-			try {
-				this.worker = new Worker('./pc-solver/worker.js?v=2');
-			} catch (err) {
+			const timer = setTimeout(() => reject(new Error('PC solver failed to start')), 20000);
+			const fail = (err) => {
+				clearTimeout(timer);
 				reject(err);
+			};
+			try {
+				this.worker = new Worker('./pc-solver/worker.js?v=3');
+			} catch (err) {
+				fail(err);
 				return;
 			}
 			this.worker.addEventListener('message', (event) => {
 				const data = event.data || {};
 				if (data.kind === 'ready') {
+					clearTimeout(timer);
 					resolve();
 					return;
 				}
 				if (data.kind === 'error' && data.id === undefined) {
-					reject(new Error(data.error || 'PC solver failed to load'));
+					fail(new Error(data.error || 'PC solver failed to load'));
 					return;
 				}
 				const pending = this.pending.get(data.id);
@@ -456,7 +462,7 @@ const gomenSolver = {
 				else pending.resolve(data);
 			});
 			this.worker.addEventListener('error', (event) => {
-				reject(new Error(event.message || 'PC solver failed to load'));
+				fail(new Error(event.message || 'PC solver failed to load'));
 			});
 		});
 		return this.ready;
@@ -466,7 +472,20 @@ const gomenSolver = {
 		await this.ensure();
 		const id = this.nextId++;
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+			const timer = setTimeout(() => {
+				this.pending.delete(id);
+				reject(new Error('PC solver timed out'));
+			}, 15000);
+			this.pending.set(id, {
+				resolve: (data) => {
+					clearTimeout(timer);
+					resolve(data);
+				},
+				reject: (err) => {
+					clearTimeout(timer);
+					reject(err);
+				},
+			});
 			this.worker.postMessage({
 				kind: 'solve',
 				id,
