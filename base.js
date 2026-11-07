@@ -1,7 +1,7 @@
 const print = console.log;
 const LS = localStorage; // client side data storage
 // Bumped whenever the analyzer changes so the running build is visible.
-const ZZ_PC_BUILD = '2026-11-07T22:55';
+const ZZ_PC_BUILD = '2026-11-07T23:05';
 console.log('ZZTetris PC analyzer build', ZZ_PC_BUILD);
 
 function ctrlsPopup() { // opens a popup window with keybinds
