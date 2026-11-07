@@ -12,6 +12,7 @@ function restart() {
 					queue: JSON.stringify(queue),
 					hold: holdP,
 					piece: piece,
+					stats: window.ZZStats?.snapshot(),
 				},
 			];
 			histPos = 0;
@@ -110,6 +111,8 @@ function restart() {
     oldb2b = b2b;
 	b2b = -1;
 	newPiece();
+	window.ZZStats?.onRestart();
+	if (hist[histPos]) hist[histPos].stats = window.ZZStats?.snapshot();
 }
 
 function garbageHeight() {

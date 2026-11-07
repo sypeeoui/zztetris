@@ -5,12 +5,15 @@
 	<script src="io.js"></script>
 	<script src="utils.js"></script>
 	<script src="tetris-fumen.js"></script>
-	<script defer src="base.js?v=15"></script>
+	<script defer src="stats-config.js"></script>
+	<script defer src="stats-core.js"></script>
+	<script defer src="base.js?v=19"></script>
 	<script defer src="tetrio.js"></script>
 	<script defer src="zztetris.js"></script>
+	<script defer src="stats.js"></script>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=6" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=7" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
 	<link rel="stylesheet" type="text/css" href="styles/board_settings.css" />
@@ -81,11 +84,33 @@
 		</div>
 
 		<div id="mainLayout" class="main-layout">
-			<div class="queue">
-				HOLD
-				<hr />
-				<canvas id="h" width="90" height="60"></canvas>
-				<div id="notif" style="width: 90px; text-align: center"></div>
+			<div class="left-column">
+				<div class="queue">
+					HOLD
+					<hr />
+					<canvas id="h" width="90" height="60"></canvas>
+					<div id="notif"></div>
+				</div>
+
+				<div class="session-panel" id="sessionPanel">
+					<div class="session-header">SESSION</div>
+					<div class="session-chain">
+						<div class="session-chain-item">
+							<span class="session-chain-label">B2B</span>
+							<span class="session-chain-value" id="sessionB2B">0</span>
+						</div>
+						<div class="session-chain-item">
+							<span class="session-chain-label">COMBO</span>
+							<span class="session-chain-value" id="sessionCombo">0</span>
+						</div>
+					</div>
+					<div class="session-stats" id="sessionStats"></div>
+					<div class="session-resets">
+						<button class="button session-reset" id="resetSessionBtn" type="button" title="Reset session stats">Reset Session</button>
+						<button class="button session-reset" id="resetQueueBtn" type="button" title="Reset queue">Reset Queue</button>
+						<button class="button session-reset" id="resetQueueHoldBtn" type="button" title="Reset queue + hold">Reset Queue + Hold</button>
+					</div>
+				</div>
 			</div>
 
 			<div>
