@@ -1,5 +1,8 @@
 const print = console.log;
 const LS = localStorage; // client side data storage
+// Bumped whenever the analyzer changes so the running build is visible.
+const ZZ_PC_BUILD = '2026-11-07T22:32';
+console.log('ZZTetris PC analyzer build', ZZ_PC_BUILD);
 
 function ctrlsPopup() { // opens a popup window with keybinds
 
@@ -784,6 +787,7 @@ function updateHistory() {
 		queue: JSON.stringify(queue),
 		hold: holdP,
 		piece: piece,
+		stats: window.ZZStats?.snapshot(),
 	};
 	if (histPos > 500) {
 		// just in case hist is taking up too much memory
@@ -951,6 +955,7 @@ function undo() {
 		updateQueue();
 		syncEvalChainInputsFromGame();
 		window.ZZStats?.onNewPiece(piece);
+		window.ZZStats?.restore(hist[histPos]['stats']);
 	}
 }
 
@@ -971,6 +976,7 @@ function redo() {
 		updateQueue();
 		syncEvalChainInputsFromGame();
 		window.ZZStats?.onNewPiece(piece);
+		window.ZZStats?.restore(hist[histPos]['stats']);
 	}
 }
 
@@ -1843,6 +1849,7 @@ async function verifyPcSetupRoutes(routes) {
 			if (route.pcCheck === 'verified') anyVerified = true;
 		} catch (error) {
 			route.pcCheck = 'unchecked';
+			setEvalStatus(`PC solver error: ${error.message}`, true);
 		}
 		updatePcSetupRouteItem(route);
 	}
@@ -3282,7 +3289,7 @@ function setEvaluationMode(enabled) {
 		evalState.overlayCells = [];
 		evalState.hoverRouteKey = '';
 		clearPcSetupPlan();
-		setEvalStatus('Evaluation is disabled.');
+		setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
 	}
 	applyCompactOptionsVisibility();
 	if (enabled) {
@@ -3467,7 +3474,7 @@ function initEvaluationUi() {
 	syncEvalChainInputsFromGame();
 	initPresets();
 	loadPcSetupData();
-	setEvalStatus('Evaluation is disabled.');
+	setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
 	evalUiReady = true;
 }
 
@@ -3705,6 +3712,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			queue: JSON.stringify(queue),
 			hold: holdP,
 			piece: piece,
+			stats: window.ZZStats?.snapshot(),
 		},
 	];
 	histPos = 0;
