@@ -1704,7 +1704,9 @@ async function runPcSetupCheck(post, budgetMs) {
 }
 
 // Ask the engine whether each setup reaches a PC, highest probability first,
-// until the shared time budget runs out.
+// until the shared time budget runs out. Verification stops at the first
+// confirmed PC: the route list shows the playable line instead of burning the
+// budget re-checking setups the player is unlikely to use.
 async function verifyPcSetupRoutes(routes, totalBudgetMs) {
 	const start = Date.now();
 	let anyVerified = false;
@@ -1712,13 +1714,16 @@ async function verifyPcSetupRoutes(routes, totalBudgetMs) {
 	for (const route of routes) {
 		if (!route.setup) continue;
 		const elapsed = Date.now() - start;
-		if (elapsed >= totalBudgetMs) {
+		if (anyVerified || elapsed >= totalBudgetMs) {
 			route.pcCheck = 'skipped';
 			updatePcSetupRouteItem(route);
 			continue;
 		}
 		const remaining = totalBudgetMs - elapsed;
-		const perSetup = Math.max(60, Math.min(300, remaining));
+		// The PC search spends up to a third of this on the no-clear 4-row scan
+		// and the rest on the general DFS; mid-clear continuations (rows fall)
+		// routinely need ~600ms of DFS, so allow up to 800ms per setup.
+		const perSetup = Math.max(80, Math.min(800, remaining));
 		try {
 			const data = await runPcSetupCheck(pcSetupPostState(route), perSetup);
 			route.pcCheck = data && data.pv && data.pv.length ? 'verified' : 'none';
@@ -2701,7 +2706,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 				setEvalStatus(
 					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Checking which setups reach a PC...`
 				);
-				const budget = Math.max(200, Math.floor(readNumberInput('evalTimeBudgetMs', 1000, 1)));
+				const budget = Math.max(1200, Math.floor(readNumberInput('evalTimeBudgetMs', 1200, 1)));
 				const { anyVerified, anyChecked } = await verifyPcSetupRoutes(routes, budget);
 				if (anyChecked && !anyVerified) {
 					// No setup clears immediately. Keep the same fields but mark
