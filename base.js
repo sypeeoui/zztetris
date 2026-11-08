@@ -637,11 +637,16 @@ document.getElementById('b').height = (boardSize[1] - hiddenRows + 3) * cellSize
 document.getElementById('b').width = boardSize[0] * cellSize;
 
 var keys = Object.keys(imgs);
-keys.map((k, idx) => {
+var imgsLoaded = 0;
+keys.map((k) => {
 	var i = new Image();
 	i.onload = () => {
 		imgs[k] = i;
-		if (idx + 1 == keys.length)
+		imgsLoaded++;
+		// Wait for every sprite, not just the last-indexed one: images can
+		// finish in any order, and replay practice draws the queue as soon
+		// as game() runs.
+		if (imgsLoaded == keys.length)
 			setTimeout(() => {
 				game();
 			}, 250); // Load images first, then load game after
