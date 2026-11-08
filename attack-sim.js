@@ -11,7 +11,8 @@
 	const MAX_BLOCK = 10;
 	const MAX_APM = 300;
 	const MAX_PENDING = 100;
-	const MAX_TANK = 40;
+	// TETR.IO's standard garbage cap is 8 lines tanked per lock.
+	const MAX_TANK = 8;
 	const MIN_INTERVAL = 50;
 	const FIRST_ATTACK_DELAY = 1000;
 	const WELL_MODES = new Set(['4w', '4w4res', '4w5res', '4w6res', '3w']);
@@ -126,8 +127,10 @@
 			boardWidth: 10,
 			garbage: { speed: 0, holeSize: 1 },
 			messiness: {
+				// A block keeps one hole for all of its rows. Hole messiness
+				// only decides whether the next block gets a new column.
 				change: settings.holeMessiness / 100,
-				within: settings.holeMessiness / 100,
+				within: 0,
 				timeout: 0,
 				nosame: false,
 				center: false,
@@ -143,14 +146,13 @@
 
 	function applyHoleMessiness() {
 		if (!queue) return;
-		const value = readSettings().holeMessiness / 100;
-		queue.options.messiness.change = value;
-		queue.options.messiness.within = value;
+		queue.options.messiness.change = readSettings().holeMessiness / 100;
+		queue.options.messiness.within = 0;
 	}
 
 	function updateMeter() {
 		if (typeof root.updateGarbageMeterDisplay === 'function') {
-			root.updateGarbageMeterDisplay(queue ? queue.size : 0);
+			root.updateGarbageMeterDisplay(queue ? queue.queue : []);
 		}
 	}
 

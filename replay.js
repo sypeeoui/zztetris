@@ -411,12 +411,12 @@
 			const meter = document.createElement('div');
 			meter.className = 'replay-garbage-meter';
 			meter.title = 'Pending garbage';
-			const meterFill = document.createElement('div');
-			meterFill.className = 'replay-garbage-fill';
+			const meterBlocks = document.createElement('div');
+			meterBlocks.className = 'replay-garbage-blocks';
 			const meterCount = document.createElement('span');
 			meterCount.className = 'replay-garbage-count';
 			meterCount.textContent = '0';
-			meter.appendChild(meterFill);
+			meter.appendChild(meterBlocks);
 			meter.appendChild(meterCount);
 
 			const boardColumn = document.createElement('div');
@@ -448,8 +448,9 @@
 				board,
 				hold,
 				queue,
-				meterFill,
+				meterBlocks,
 				meterCount,
+				meterSignature: '',
 				statsPanel,
 			});
 		}
@@ -557,11 +558,24 @@
 			C.renderBoard(card.board, entry.engine, { cellSize: card.cellSize });
 			C.renderQueue(card.queue, entry.engine, 6, 20, 90);
 			C.renderHold(card.hold, entry.engine, 20, 90, 60);
-			const pending = entry.engine.garbageQueue.size;
-			const maxLines = entry.engine.board.height + 3;
-			const lines = Math.min(pending, maxLines);
-			card.meterFill.style.height = `${(lines / maxLines) * 100}%`;
-			card.meterCount.textContent = String(pending);
+			const blocks = entry.engine.garbageQueue.queue;
+			const total = blocks.reduce((sum, block) => sum + block.amount, 0);
+			const signature = blocks.map((block) => block.amount).join(',');
+			if (signature !== card.meterSignature) {
+				card.meterSignature = signature;
+				const maxLines = entry.engine.board.height + 3;
+				const scale = total > maxLines ? maxLines / total : 1;
+				card.meterBlocks.innerHTML = '';
+				for (const block of blocks) {
+					if (block.amount <= 0) continue;
+					const segment = document.createElement('div');
+					segment.className = 'replay-garbage-block';
+					segment.style.height = `${(block.amount * scale / maxLines) * 100}%`;
+					segment.title = `${block.amount} line${block.amount === 1 ? '' : 's'}`;
+					card.meterBlocks.appendChild(segment);
+				}
+				card.meterCount.textContent = String(total);
+			}
 			if (updateStats) {
 				const isFinal = state.currentFrame >= entry.player.frames;
 				card.statsPanel.update(

@@ -86,16 +86,29 @@ function addGarbageRows(column, amount = 1, size = 1) {
 }
 
 // Shared pending-garbage meter used by replay practice and the attack
-// simulator. `pending` is the number of queued garbage lines.
-function updateGarbageMeterDisplay(pending) {
-	const fill = document.getElementById('garbageMeterFill');
+// simulator. `blocks` is the queue's entry list; each entry becomes one
+// visible segment so block divisions stay readable.
+function updateGarbageMeterDisplay(blocks) {
+	const container = document.getElementById('garbageMeterBlocks');
 	const count = document.getElementById('garbageCount');
-	if (!fill || !count) return;
-	const amount = Math.max(0, Math.floor(Number(pending) || 0));
+	if (!container || !count) return;
+	const entries = Array.isArray(blocks) ? blocks : [{ amount: blocks }];
+	const amounts = entries.map((entry) =>
+		Math.max(0, Math.floor(Number(entry?.amount) || 0))
+	);
+	const total = amounts.reduce((sum, amount) => sum + amount, 0);
 	const maxLines = boardSize[1] - hiddenRows + 3;
-	const lines = Math.min(amount, maxLines);
-	fill.style.height = `${(lines / maxLines) * 100}%`;
-	count.textContent = String(amount);
+	const scale = total > maxLines ? maxLines / total : 1;
+	container.innerHTML = '';
+	for (const amount of amounts) {
+		if (amount <= 0) continue;
+		const block = document.createElement('div');
+		block.className = 'garbage-meter-block';
+		block.style.height = `${(amount * scale / maxLines) * 100}%`;
+		block.title = `${amount} line${amount === 1 ? '' : 's'}`;
+		container.appendChild(block);
+	}
+	count.textContent = String(total);
 }
 
 function addPracticeGarbageUI() {

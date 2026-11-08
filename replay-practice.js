@@ -293,7 +293,7 @@
 	}
 
 	function updateGarbageMeter() {
-		updateGarbageMeterDisplay(garbageQueue ? garbageQueue.size : 0);
+		updateGarbageMeterDisplay(garbageQueue ? garbageQueue.queue : []);
 	}
 
 	function updateStatus() {
