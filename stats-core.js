@@ -290,6 +290,7 @@
 			maxB2B: 0,
 			garbageReceived: 0,
 			garbageCleared: 0,
+			garbageCanceled: 0,
 			currentInputs: 0,
 			currentPiece: '',
 			softDropExempt: false,
@@ -434,6 +435,8 @@
 				return state.garbageReceived;
 			case 'garbageCleared':
 				return state.garbageCleared;
+			case 'garbageCanceled':
+				return state.garbageCanceled;
 			case 'downstackPerSecond':
 				return seconds > 0 ? state.garbageCleared / seconds : 0;
 			case 'downstackPerPiece':

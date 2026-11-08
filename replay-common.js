@@ -760,7 +760,10 @@
 				lockPre: () => this.onLockPre(),
 				lock: (res) => this.onLock(res),
 				garbageTank: () => this.onGarbageChange(),
-				garbageCancel: () => this.onGarbageChange(),
+				garbageCancel: (event) => {
+					this.onGarbageChange();
+					this.onGarbageCancel(event);
+				},
 			};
 			engine.events.on('falling.new', this.handlers.fallingNew);
 			engine.events.on('falling.lock.pre', this.handlers.lockPre);
@@ -914,6 +917,14 @@
 
 		onGarbageChange() {
 			// The pending garbage display reads engine.garbageQueue.size directly.
+		}
+
+		onGarbageCancel(event) {
+			const amount = Math.max(
+				0,
+				Math.floor(Number(event?.amount) || 0)
+			);
+			if (amount > 0) this.state.garbageCanceled += amount;
 		}
 
 		onKeyEvent(event) {

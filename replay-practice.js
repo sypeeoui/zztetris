@@ -223,9 +223,16 @@
 				const pieces = root.ZZStats?.getState()?.pieces || 0;
 				const legacyOpener =
 					(engine.misc.date ?? new Date()) < new Date(2025, 1, 16);
-				garbageQueue.cancel(amount, pieces, {
+				const [, canceledRows] = garbageQueue.cancel(amount, pieces, {
 					openerPhase: legacyOpener,
 				});
+				const canceled = canceledRows.reduce(
+					(sum, row) => sum + (Number(row?.amount) || 0),
+					0
+				);
+				if (canceled > 0) {
+					root.ZZStats?.addGarbageCanceled?.(canceled);
+				}
 			}
 		} else {
 			const cap = engine.dynamic.garbageCap.get();

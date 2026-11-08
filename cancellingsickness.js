@@ -5,7 +5,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=5015766d', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=168c48ca', 'popup', 'width=1200,height=800');
 	var reloading = false;
 
 	setInterval(() => {

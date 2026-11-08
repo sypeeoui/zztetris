@@ -272,6 +272,13 @@
 		if (amount > 0) state.garbageReceived += amount;
 	}
 
+	// Tetra Stats "Cancelled": incoming garbage removed by a clear instead of
+	// being tanked.
+	function addGarbageCanceled(lines) {
+		const amount = Math.max(0, Math.floor(Number(lines) || 0));
+		if (amount > 0) state.garbageCanceled += amount;
+	}
+
 	function installGarbageHooks() {
 		if (typeof root.garbage === 'function' && !root.garbage.__zzStatsWrapped) {
 			const original = root.garbage;
@@ -357,6 +364,7 @@
 		getAttackDisplay,
 		getFinesseTable: () => finesseTable,
 		addGarbageReceived,
+		addGarbageCanceled,
 	};
 
 	if (document.readyState === 'loading') {

@@ -9,6 +9,8 @@
 	'use strict';
 
 	const STORAGE_KEY = 'zztetris_stats_config';
+	// Bump when a new default stat should be added to older saved configs.
+	const STATS_CONFIG_VERSION = 2;
 
 	// `format` is interpreted by stats-core.js:
 	//   time     -> m:ss / h:mm:ss
@@ -37,6 +39,8 @@
 		{ id: 'garbageSent', label: 'Garbage Sent', group: 'Garbage', format: 'int' },
 		{ id: 'garbageReceived', label: 'Garbage Received', group: 'Garbage', format: 'int' },
 		{ id: 'garbageCleared', label: 'Garbage Cleared', group: 'Garbage', format: 'int' },
+		// Tetra Stats calls the incoming garbage removed by clears "Cancelled".
+		{ id: 'garbageCanceled', label: 'Garbage Cancelled', group: 'Garbage', format: 'int' },
 		{ id: 'downstackPerSecond', label: 'DS/S (Downstack/sec)', group: 'Garbage', format: 'float2' },
 		{ id: 'downstackPerPiece', label: 'DS/P (Downstack/piece)', group: 'Garbage', format: 'float2' },
 		{ id: 'garbageEfficiency', label: 'GbE (Garbage Eff.)', group: 'Garbage', format: 'float2' },
@@ -91,6 +95,7 @@
 		'maxCombo',
 		'maxB2B',
 		'attack',
+		'garbageCanceled',
 		'quads',
 		'tspins',
 		'perfectClears',
@@ -137,11 +142,28 @@
 		config.showPanel = config.showPanel !== false;
 		config.finesseSound = config.finesseSound !== false;
 		config.exemptSpins = config.exemptSpins === true;
+
+		// Add newly introduced default stats to configs saved before they
+		// existed, then persist the migrated config so removing the stat later
+		// is respected.
+		const storedVersion = Number(stored.version) || 1;
+		if (storedVersion < STATS_CONFIG_VERSION) {
+			if (!config.visibleStats.includes('garbageCanceled')) {
+				config.visibleStats.push('garbageCanceled');
+			}
+			config.version = STATS_CONFIG_VERSION;
+			try {
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+			} catch (error) {
+				// Storage can be unavailable (private mode).
+			}
+		}
 		return config;
 	}
 
 	function saveConfig(config) {
 		const payload = {
+			version: STATS_CONFIG_VERSION,
 			showPanel: config.showPanel !== false,
 			finesseSound: config.finesseSound !== false,
 			finesseSoundName: config.finesseSoundName || DEFAULT_CONFIG.finesseSoundName,

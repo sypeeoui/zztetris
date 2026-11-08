@@ -238,7 +238,16 @@
 		const attack = Math.max(0, Math.floor(Number(info?.attack) || 0));
 		if (cleared > 0) {
 			const pieces = root.ZZStats?.getState()?.pieces || 0;
-			queue.cancel(attack, pieces, { openerPhase: false });
+			const [, canceledRows] = queue.cancel(attack, pieces, {
+				openerPhase: false,
+			});
+			const canceled = canceledRows.reduce(
+				(sum, row) => sum + (Number(row?.amount) || 0),
+				0
+			);
+			if (canceled > 0) {
+				root.ZZStats?.addGarbageCanceled?.(canceled);
+			}
 		} else {
 			const rows = queue.tank(Date.now(), MAX_TANK, true);
 			const total = tankRows(rows);
