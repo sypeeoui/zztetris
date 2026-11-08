@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-v15';
+	const SW_CACHE_VERSION = 'zztetris-mobile-v16';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -66,16 +66,41 @@
 
 	const HOLD_ACTIONS = new Set(['L', 'R', 'SD']);
 
-	const PORTRAIT_SLOTS = {
-		SD: { cluster: 'left', col: 1, row: 1, span: 2 },
-		L: { cluster: 'left', col: 1, row: 2 },
-		R: { cluster: 'left', col: 2, row: 2 },
-		R180: { cluster: 'left', col: 1, row: 3, span: 2 },
-		CCW: { cluster: 'right', col: 1, row: 1 },
-		CW: { cluster: 'right', col: 2, row: 1 },
-		HD: { cluster: 'right', col: 1, row: 2 },
-		HL: { cluster: 'right', col: 2, row: 2 },
+	// Portrait clusters can use either a 3-row "wide, pair, wide" shape or a
+	// 2x2 grid. The wide shape on the right puts hold on top and hard drop on
+	// the bottom wide button, with the rotations in the middle row.
+	const PORTRAIT_SHAPES = {
+		wide: {
+			left: {
+				SD: { cluster: 'left', col: 1, row: 1, span: 2 },
+				L: { cluster: 'left', col: 1, row: 2 },
+				R: { cluster: 'left', col: 2, row: 2 },
+				R180: { cluster: 'left', col: 1, row: 3, span: 2 },
+			},
+			right: {
+				HL: { cluster: 'right', col: 1, row: 1, span: 2 },
+				CCW: { cluster: 'right', col: 1, row: 2 },
+				CW: { cluster: 'right', col: 2, row: 2 },
+				HD: { cluster: 'right', col: 1, row: 3, span: 2 },
+			},
+		},
+		grid: {
+			left: {
+				SD: { cluster: 'left', col: 1, row: 1 },
+				L: { cluster: 'left', col: 2, row: 1 },
+				R: { cluster: 'left', col: 1, row: 2 },
+				R180: { cluster: 'left', col: 2, row: 2 },
+			},
+			right: {
+				CCW: { cluster: 'right', col: 1, row: 1 },
+				CW: { cluster: 'right', col: 2, row: 1 },
+				HD: { cluster: 'right', col: 1, row: 2 },
+				HL: { cluster: 'right', col: 2, row: 2 },
+			},
+		},
 	};
+
+	const PORTRAIT_SLOT_ORDER = ['SD', 'L', 'R', 'R180', 'CCW', 'CW', 'HD', 'HL'];
 
 	function defaultLandscapeButtons(preset) {
 		const buttons = [
@@ -107,11 +132,19 @@
 		];
 	}
 
+	function portraitSlot(slot) {
+		const left = PORTRAIT_SHAPES[config.portrait.leftShape] || PORTRAIT_SHAPES.wide;
+		const right = PORTRAIT_SHAPES[config.portrait.rightShape] || PORTRAIT_SHAPES.wide;
+		return left.left[slot] || right.right[slot] || null;
+	}
+
 	const DEFAULT_CONFIG = {
 		version: 3,
 		portrait: {
 			split: 0.5,
 			inputMode: 'gesture',
+			leftShape: 'wide',
+			rightShape: 'wide',
 			left: {
 				tap: 'HL',
 				longPress: null,
@@ -153,6 +186,9 @@
 			showNext: true,
 			showStats: true,
 			extraStat: 'finesse',
+		},
+		buttons: {
+			slide: true,
 		},
 		pauseCorner: 'top-right',
 	};
@@ -222,6 +258,10 @@
 	normalizeConfig();
 
 	function normalizeConfig() {
+		if (!PORTRAIT_SHAPES[config.portrait.leftShape]) config.portrait.leftShape = 'wide';
+		if (!PORTRAIT_SHAPES[config.portrait.rightShape]) config.portrait.rightShape = 'wide';
+		if (!config.buttons || typeof config.buttons !== 'object') config.buttons = {};
+		if (typeof config.buttons.slide !== 'boolean') config.buttons.slide = true;
 		const landscapeDefaults = defaultLandscapeButtons('techmino');
 		const byId = {};
 		for (const button of landscapeDefaults) byId[button.id] = button;
@@ -267,6 +307,10 @@
 	let paused = false;
 	let deferredPrompt = null;
 	let subSheetParent = null;
+
+	const buttonByElement = new WeakMap();
+	const buttonSessions = new Map();
+	const heldRefs = new Map();
 
 	function $(id) {
 		return document.getElementById(id);
@@ -688,6 +732,7 @@
 
 	function setPaused(value) {
 		paused = !!value;
+		if (paused) clearButtonSessions();
 		window.ZZInput?.setPaused(paused);
 	}
 
@@ -771,7 +816,7 @@
 		left.innerHTML = '';
 		right.innerHTML = '';
 		for (const button of config.portrait.buttons) {
-			const slot = PORTRAIT_SLOTS[button.slot];
+			const slot = portraitSlot(button.slot);
 			if (!slot) continue;
 			const element = createActionButton(button, false);
 			element.classList.toggle('zzBtn--wide', !!slot.span);
@@ -968,6 +1013,65 @@
 		}
 	}
 
+	function pressHeld(action) {
+		const count = heldRefs.get(action) || 0;
+		heldRefs.set(action, count + 1);
+		if (count === 0) window.ZZInput?.press(action);
+	}
+
+	function releaseHeld(action) {
+		const count = heldRefs.get(action) || 0;
+		if (count <= 1) {
+			heldRefs.delete(action);
+			if (count === 1) window.ZZInput?.release(action);
+		} else {
+			heldRefs.set(action, count - 1);
+		}
+	}
+
+	function buttonElementAt(x, y) {
+		if (typeof document.elementsFromPoint !== 'function') return null;
+		const stack = document.elementsFromPoint(x, y);
+		for (const item of stack) {
+			const element = item.closest && item.closest('.zzBtn');
+			if (element && buttonByElement.has(element)) return element;
+		}
+		return null;
+	}
+
+	function activateSlideButton(session, element, button) {
+		if (!button.action || session.actions.has(button.action)) return;
+		session.actions.add(button.action);
+		session.elements.add(element);
+		element.classList.add('zz-active');
+		if (button.hold) {
+			session.held.add(button.action);
+			pressHeld(button.action);
+		} else {
+			window.ZZInput?.tap(button.action);
+		}
+		haptic();
+	}
+
+	function endButtonSession(event) {
+		const session = buttonSessions.get(event.pointerId);
+		if (!session) return;
+		buttonSessions.delete(event.pointerId);
+		for (const element of session.elements) element.classList.remove('zz-active');
+		for (const action of session.held) releaseHeld(action);
+	}
+
+	function clearButtonSessions() {
+		for (const session of buttonSessions.values()) {
+			for (const element of session.elements) element.classList.remove('zz-active');
+			for (const action of session.held) releaseHeld(action);
+		}
+		buttonSessions.clear();
+	}
+
+	window.addEventListener('pointerup', endButtonSession, true);
+	window.addEventListener('pointercancel', endButtonSession, true);
+
 	function createActionButton(button, free) {
 		const element = document.createElement('button');
 		element.type = 'button';
@@ -975,6 +1079,7 @@
 		element.dataset.action = button.action;
 		element.innerHTML =
 			'<svg aria-hidden="true"><use href="./assets/icons/dark.svg#' + button.icon + '"></use></svg>';
+		buttonByElement.set(element, button);
 		element.addEventListener('pointerdown', (event) => {
 			event.preventDefault();
 			if (paused) return;
@@ -983,18 +1088,43 @@
 			} catch (error) {
 				// Pointer capture is best-effort.
 			}
+			if (config.buttons.slide) {
+				const session = {
+					pointerId: event.pointerId,
+					actions: new Set(),
+					held: new Set(),
+					elements: new Set(),
+				};
+				buttonSessions.set(event.pointerId, session);
+				activateSlideButton(session, element, button);
+				return;
+			}
 			element.classList.add('zz-active');
-			if (button.hold) window.ZZInput?.press(button.action);
+			if (button.hold) pressHeld(button.action);
 			else window.ZZInput?.tap(button.action);
 			haptic();
 		});
-		const release = () => {
+		element.addEventListener('pointermove', (event) => {
+			const session = buttonSessions.get(event.pointerId);
+			if (!session) return;
+			const target = buttonElementAt(event.clientX, event.clientY);
+			const targetButton = target && buttonByElement.get(target);
+			if (targetButton) activateSlideButton(session, target, targetButton);
+		});
+		const release = (event) => {
+			if (buttonSessions.has(event.pointerId)) {
+				endButtonSession(event);
+				return;
+			}
+			if (config.buttons.slide) return;
 			element.classList.remove('zz-active');
-			if (button.hold) window.ZZInput?.release(button.action);
+			if (button.hold) releaseHeld(button.action);
 		};
 		element.addEventListener('pointerup', release);
 		element.addEventListener('pointercancel', release);
-		element.addEventListener('pointerleave', release);
+		element.addEventListener('pointerleave', (event) => {
+			if (!config.buttons.slide) release(event);
+		});
 		return element;
 	}
 
@@ -1030,10 +1160,14 @@
 			'<div class="zzSheetRow"><label>DAS</label><input type="range" id="zzDas" min="0" max="750" step="1"><input type="number" class="zzNum" id="zzDasNum" min="0" max="750" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>ARR</label><input type="range" id="zzArr" min="0" max="500" step="1"><input type="number" class="zzNum" id="zzArrNum" min="0" max="500" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>SDR</label><input type="range" id="zzSdr" min="0" max="250" step="1"><input type="number" class="zzNum" id="zzSdrNum" min="0" max="250" step="1" inputmode="numeric"></div>' +
-			'<p class="zzHint">DAS is the delay before auto-repeat, ARR is the repeat rate, SDR is the soft-drop rate.</p>' +
+			'<div class="zzSheetRow"><label>Slide across buttons</label><input type="checkbox" id="zzButtonSlide"></div>' +
+			'<p class="zzHint">DAS is the delay before auto-repeat, ARR is the repeat rate, SDR is the soft-drop rate. With slide enabled, hold a button and move onto another to press it without releasing the first; lift your finger to release all.</p>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="portrait">' +
 			'<div class="zzSheetRow"><label>Input mode</label><select id="zzPortraitInputMode"><option value="gesture">Gestures</option><option value="buttons">Buttons</option></select></div>' +
+			'<div class="zzSheetRow"><label>Left shape</label><select id="zzPortraitLeftShape"><option value="wide">Wide / pair / wide</option><option value="grid">2 × 2 grid</option></select></div>' +
+			'<div class="zzSheetRow"><label>Right shape</label><select id="zzPortraitRightShape"><option value="wide">Wide / pair / wide</option><option value="grid">2 × 2 grid</option></select></div>' +
+			'<p class="zzHint">Both clusters use the 3-row wide shape by default. Switch either side to a 2 × 2 grid; use Edit layout to assign actions.</p>' +
 			'<div class="zzMapGrid"><div class="zzMapCard" id="zzLeftMap"></div><div class="zzMapCard" id="zzRightMap"></div></div>' +
 			'<div class="zzSheetRow"><label>Swipe distance</label><input type="range" id="zzSwipe" min="12" max="60" step="1"><input type="number" class="zzNum" id="zzSwipeNum" min="12" max="60" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Tap max</label><input type="range" id="zzTapMax" min="80" max="400" step="1"><input type="number" class="zzNum" id="zzTapMaxNum" min="80" max="400" step="1" inputmode="numeric"></div>' +
@@ -1086,6 +1220,7 @@
 		buildMapCard($('zzRightMap'), config.portrait.right, 'right');
 		setupThresholds();
 		setupPortraitLayout();
+		setupPortraitShapes();
 		setupPortraitInputMode();
 		setupLandscape();
 		setupLandscapeInputMode();
@@ -1151,6 +1286,15 @@
 		dasNum.addEventListener('change', clampNumbers);
 		arrNum.addEventListener('change', clampNumbers);
 		sdrNum.addEventListener('change', clampNumbers);
+
+		const slide = $('zzButtonSlide');
+		if (slide) {
+			slide.checked = config.buttons.slide !== false;
+			slide.addEventListener('change', () => {
+				config.buttons.slide = slide.checked;
+				saveConfig();
+			});
+		}
 		sync();
 	}
 
@@ -1327,6 +1471,24 @@
 		});
 	}
 
+	function setupPortraitShapes() {
+		const left = $('zzPortraitLeftShape');
+		const right = $('zzPortraitRightShape');
+		if (!left || !right) return;
+		left.value = config.portrait.leftShape || 'wide';
+		right.value = config.portrait.rightShape || 'wide';
+		const apply = () => {
+			config.portrait.leftShape = left.value;
+			config.portrait.rightShape = right.value;
+			saveConfig();
+			rebuildPortraitButtons();
+			updateControlsHeight();
+			requestAnimationFrame(resizeBoard);
+		};
+		left.addEventListener('change', apply);
+		right.addEventListener('change', apply);
+	}
+
 	function setupPortraitInputMode() {
 		const select = $('zzPortraitInputMode');
 		if (!select) return;
@@ -1444,7 +1606,7 @@
 
 	function nextFreePortraitSlot() {
 		const used = new Set(config.portrait.buttons.map((button) => button.slot));
-		for (const slot of Object.keys(PORTRAIT_SLOTS)) {
+		for (const slot of PORTRAIT_SLOT_ORDER) {
 			if (!used.has(slot)) return slot;
 		}
 		return null;
@@ -1529,7 +1691,7 @@
 			const right = document.createElement('div');
 			right.className = 'zzLayoutCluster zzLayoutCluster--right';
 			for (const button of config.portrait.buttons) {
-				const slot = PORTRAIT_SLOTS[button.slot];
+				const slot = portraitSlot(button.slot);
 				if (!slot) continue;
 				const element = makeEditorButton(button);
 				element.classList.toggle('zzBtn--wide', !!slot.span);
