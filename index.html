@@ -10,12 +10,12 @@
 	<script defer src="base.js?v=25"></script>
 	<script defer src="tetrio.js"></script>
 	<script defer src="zztetris.js"></script>
-	<script defer src="stats.js"></script>
-	<script defer src="mobile.js?v=15"></script>
+	<script defer src="stats.js?v=2"></script>
+	<script defer src="mobile.js?v=16"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=7" />
-	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=7" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=8" />
+	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=8" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
 	<link rel="stylesheet" type="text/css" href="styles/board_settings.css" />
@@ -129,6 +129,16 @@
 						<div class="session-chain-item">
 							<span class="session-chain-label">COMBO</span>
 							<span class="session-chain-value" id="sessionCombo">0</span>
+						</div>
+					</div>
+					<div class="session-attack" id="sessionAttack" hidden>
+						<div class="session-attack-item" id="sessionDamageItem" hidden>
+							<span class="session-attack-label">DAMAGE</span>
+							<span class="session-attack-value" id="sessionDamage">0</span>
+						</div>
+						<div class="session-attack-item" id="sessionSpikeItem" hidden>
+							<span class="session-attack-label">SPIKE</span>
+							<span class="session-attack-value" id="sessionSpike">0</span>
 						</div>
 					</div>
 					<div class="session-stats" id="sessionStats"></div>

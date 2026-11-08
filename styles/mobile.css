@@ -187,6 +187,10 @@ html.mobile #zzStatsMini .zzStatRow {
 	overflow: hidden;
 }
 
+html.mobile #zzStatsMini .zzStatRow[hidden] {
+	display: none;
+}
+
 html.mobile #zzStatsMini .zzStatRow span {
 	color: #9e9e9e;
 	overflow: hidden;
@@ -312,16 +316,27 @@ html.mobile[data-mobile-orientation='portrait'][data-input-mode='buttons'] #zzPo
 
 html.mobile #zzPortraitButtons .zzCluster {
 	display: grid;
-	grid-auto-rows: var(--zz-btn-size, 64px);
+	grid-auto-rows: var(--zz-portrait-btn-size, 64px);
 	gap: 8px;
 }
 
 html.mobile #zzPortraitLeftCluster {
-	grid-template-columns: repeat(2, var(--zz-btn-size, 64px));
+	grid-template-columns: repeat(2, var(--zz-portrait-btn-size, 64px));
 }
 
 html.mobile #zzPortraitRightCluster {
-	grid-template-columns: repeat(2, var(--zz-btn-size, 64px));
+	grid-template-columns: repeat(2, var(--zz-portrait-btn-size, 64px));
+}
+
+/* Portrait buttons use their own size, capped by mobile.js to fit the
+   viewport, so the landscape size setting cannot push them off screen. */
+html.mobile #zzPortraitButtons .zzBtn {
+	width: var(--zz-portrait-btn-size, 64px);
+	height: var(--zz-portrait-btn-size, 64px);
+}
+
+html.mobile #zzPortraitButtons .zzBtn--wide {
+	width: auto;
 }
 
 /* Landscape buttons. */
@@ -475,14 +490,23 @@ html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait {
 
 html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait .zzLayoutCluster {
 	display: grid;
-	grid-auto-rows: var(--zz-btn-size, 64px);
+	grid-auto-rows: var(--zz-portrait-btn-size, 64px);
 	gap: 8px;
 	pointer-events: none;
 }
 
 html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait .zzLayoutCluster--left,
 html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait .zzLayoutCluster--right {
-	grid-template-columns: repeat(2, var(--zz-btn-size, 64px));
+	grid-template-columns: repeat(2, var(--zz-portrait-btn-size, 64px));
+}
+
+html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait .zzBtn {
+	width: var(--zz-portrait-btn-size, 64px);
+	height: var(--zz-portrait-btn-size, 64px);
+}
+
+html.mobile #zzLayoutCanvas.zzLayoutCanvas--portrait .zzBtn--wide {
+	width: auto;
 }
 
 html.mobile .zzLayoutHint {
@@ -496,7 +520,7 @@ html.mobile .zzLayoutHint {
 }
 
 html.mobile #zzLayoutEditor[data-layout-mode='portrait'] .zzLayoutHint {
-	bottom: calc(var(--zz-btn-size, 64px) * 3 + 40px + env(safe-area-inset-bottom));
+	bottom: calc(var(--zz-portrait-btn-size, 64px) * 3 + 40px + env(safe-area-inset-bottom));
 }
 
 html.mobile .zzBtn--edit {

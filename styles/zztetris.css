@@ -553,6 +553,39 @@ footer {
 	color: #4caf50;
 }
 
+/* Transient attack readout: the latest clear and TETR.IO-style 1s spike. */
+.session-attack {
+	display: flex;
+	gap: 6px;
+}
+
+.session-attack[hidden],
+.session-attack-item[hidden] {
+	display: none;
+}
+
+.session-attack-item {
+	flex: 1;
+	background: #111;
+	border: 1px solid #333;
+	padding: 4px;
+	text-align: center;
+}
+
+.session-attack-label {
+	display: block;
+	color: #9a9a9a;
+	font-size: 10px;
+}
+
+.session-attack-value {
+	display: block;
+	font-size: 22px;
+	line-height: 1.1;
+	color: #ffc107;
+	font-family: monospace;
+}
+
 .session-stats {
 	display: flex;
 	flex-direction: column;

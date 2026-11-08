@@ -12,6 +12,40 @@
 	let finesseTable = null;
 	const soundCache = {};
 
+	// TETR.IO's damage display: an attack remains part of the current spike
+	// when the next attack lands within one second of the previous one.
+	const SPIKE_WINDOW_MS = 1000;
+	let lastAttackAt = 0;
+	let lastClearDamage = 0;
+	let spikeValue = 0;
+
+	function recordAttack(damage) {
+		const amount = Math.max(0, Math.floor(Number(damage) || 0));
+		lastClearDamage = amount;
+		if (amount <= 0) return;
+		const now = Date.now();
+		if (lastAttackAt > 0 && now - lastAttackAt <= SPIKE_WINDOW_MS) {
+			spikeValue += amount;
+		} else {
+			spikeValue = amount;
+		}
+		lastAttackAt = now;
+	}
+
+	function getAttackDisplay(now = Date.now()) {
+		if (spikeValue > 0 && lastAttackAt > 0 && now - lastAttackAt > SPIKE_WINDOW_MS) {
+			spikeValue = 0;
+			lastAttackAt = 0;
+		}
+		return { damage: lastClearDamage, spike: spikeValue };
+	}
+
+	function resetAttackDisplay() {
+		lastAttackAt = 0;
+		lastClearDamage = 0;
+		spikeValue = 0;
+	}
+
 	function buildFinesseTable() {
 		try {
 			if (typeof pieces === 'undefined' || typeof kicksets === 'undefined') return null;
@@ -90,6 +124,18 @@
 			b2bEl.classList.toggle('session-chain-value--active', b2bValue > 0);
 		}
 
+		const attack = getAttackDisplay();
+		const attackEl = document.getElementById('sessionAttack');
+		const damageEl = document.getElementById('sessionDamage');
+		const damageItem = document.getElementById('sessionDamageItem');
+		const spikeEl = document.getElementById('sessionSpike');
+		const spikeItem = document.getElementById('sessionSpikeItem');
+		if (damageEl) damageEl.textContent = String(attack.damage);
+		if (spikeEl) spikeEl.textContent = String(attack.spike);
+		if (damageItem) damageItem.hidden = attack.damage <= 0;
+		if (spikeItem) spikeItem.hidden = attack.spike <= 0;
+		if (attackEl) attackEl.hidden = attack.damage <= 0 && attack.spike <= 0;
+
 		const statsEl = document.getElementById('sessionStats');
 		if (!statsEl) return;
 		const now = Date.now();
@@ -156,6 +202,7 @@
 			finesseTable
 		);
 		if (result.fault) playFinesseSound();
+		recordAttack(result.attack.total);
 		updatePanel();
 	}
 
@@ -186,11 +233,13 @@
 		state.currentInputs = 0;
 		state.softDropExempt = false;
 		state.lastFinesseFault = false;
+		resetAttackDisplay();
 		updatePanel();
 	}
 
 	function resetSession() {
 		core.resetState(state, Date.now());
+		resetAttackDisplay();
 		// The chain is part of the session, so reset it too.
 		if (typeof combo !== 'undefined') {
 			combo = -1;
@@ -289,6 +338,7 @@
 		resetQueueHold,
 		refreshConfig,
 		getState: () => state,
+		getAttackDisplay,
 		getFinesseTable: () => finesseTable,
 	};
 

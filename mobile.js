@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-v16';
+	const SW_CACHE_VERSION = 'zztetris-mobile-v17';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -143,6 +143,7 @@
 		portrait: {
 			split: 0.5,
 			inputMode: 'gesture',
+			size: 64,
 			leftShape: 'wide',
 			rightShape: 'wide',
 			left: {
@@ -260,6 +261,10 @@
 	function normalizeConfig() {
 		if (!PORTRAIT_SHAPES[config.portrait.leftShape]) config.portrait.leftShape = 'wide';
 		if (!PORTRAIT_SHAPES[config.portrait.rightShape]) config.portrait.rightShape = 'wide';
+		const portraitSize = Number(config.portrait.size);
+		config.portrait.size = Number.isFinite(portraitSize)
+			? Math.min(96, Math.max(44, portraitSize))
+			: 64;
 		if (!config.buttons || typeof config.buttons !== 'object') config.buttons = {};
 		if (typeof config.buttons.slide !== 'boolean') config.buttons.slide = true;
 		const landscapeDefaults = defaultLandscapeButtons('techmino');
@@ -471,6 +476,7 @@
 		root.dataset.mobileOrientation = orientation;
 		applyInputModes();
 		applyPauseCorner();
+		rebuildLandscapeButtons();
 		requestAnimationFrame(resizeBoard);
 	}
 
@@ -482,14 +488,27 @@
 		requestAnimationFrame(resizeBoard);
 	}
 
+	// Portrait buttons have their own size so changing the landscape size
+	// cannot push the two clusters past the screen edges. The configured size
+	// is additionally capped by the available width and height.
+	function portraitButtonSize() {
+		const configured = Math.min(96, Math.max(44, Number(config.portrait.size) || 64));
+		const width = window.innerWidth || root.clientWidth || 390;
+		const height = window.innerHeight || root.clientHeight || 844;
+		const widthFit = Math.max(44, Math.floor((width - 40) / 4));
+		const heightFit = Math.max(44, Math.floor((height * 0.4 - 32) / 3));
+		return Math.min(configured, widthFit, heightFit);
+	}
+
 	function updateControlsHeight() {
+		const portraitSize = portraitButtonSize();
+		root.style.setProperty('--zz-portrait-btn-size', portraitSize + 'px');
 		let height;
 		if (orientation === 'portrait') {
-			if (config.portrait.inputMode === 'buttons') {
-				height = Math.max(200, config.landscape.size * 3 + 32);
-			} else {
-				height = Math.min(Math.max(window.innerHeight * 0.24, 120), 200);
-			}
+			height =
+				config.portrait.inputMode === 'buttons'
+					? portraitSize * 3 + 32
+					: Math.min(Math.max(window.innerHeight * 0.24, 120), 200);
 		} else {
 			height = 120;
 		}
@@ -595,12 +614,15 @@
 		stats.innerHTML =
 			'<div class="zzStatRow"><span>B2B</span><b id="zzStatB2B">0</b></div>' +
 			'<div class="zzStatRow"><span>CMB</span><b id="zzStatCombo">0</b></div>' +
+			'<div class="zzStatRow" id="zzStatDamageRow" hidden><span>DMG</span><b id="zzStatDamage">0</b></div>' +
+			'<div class="zzStatRow" id="zzStatSpikeRow" hidden><span>SPK</span><b id="zzStatSpike">0</b></div>' +
 			'<div class="zzStatRow"><span>PPS</span><b id="zzStatPps">0.00</b></div>' +
 			'<div class="zzStatRow"><span>APM</span><b id="zzStatApm">0.0</b></div>' +
 			'<div class="zzStatRow"><span>VS</span><b id="zzStatVs">0.0</b></div>' +
 			'<div class="zzStatRow"><span id="zzStatExtraLabel">FIN</span><b id="zzStatExtra">—</b></div>';
 		document.body.appendChild(stats);
 		updateStatsMini();
+		setInterval(updateStatsMini, 100);
 	}
 
 	function updateStatsMini() {
@@ -627,6 +649,17 @@
 		set('zzStatPps', 'pps');
 		set('zzStatApm', 'apm');
 		set('zzStatVs', 'vs');
+
+		const attack = api.getAttackDisplay ? api.getAttackDisplay() : { damage: 0, spike: 0 };
+		const damageRow = $('zzStatDamageRow');
+		const spikeRow = $('zzStatSpikeRow');
+		const damageValue = $('zzStatDamage');
+		const spikeValue = $('zzStatSpike');
+		if (damageValue) damageValue.textContent = String(attack.damage);
+		if (spikeValue) spikeValue.textContent = String(attack.spike);
+		if (damageRow) damageRow.hidden = attack.damage <= 0;
+		if (spikeRow) spikeRow.hidden = attack.spike <= 0;
+
 		const extraId = config.display.extraStat || 'finesse';
 		const def = configApi.STAT_DEFS.find((entry) => entry.id === extraId);
 		const label = $('zzStatExtraLabel');
@@ -991,14 +1024,36 @@
 		wrap.id = 'zzLandscapeControls';
 		document.body.appendChild(wrap);
 		applyLandscapeVars();
-		rebuildLandscapeButtons();
 	}
 
 	function applyLandscapeVars() {
 		root.style.setProperty('--zz-btn-size', config.landscape.size + 'px');
 		root.style.setProperty('--zz-btn-opacity', (config.landscape.opacity / 100).toFixed(2));
 		updateControlsHeight();
+		rebuildLandscapeButtons();
 		requestAnimationFrame(resizeBoard);
+	}
+
+	function landscapePositionBounds() {
+		const size = Math.min(96, Math.max(44, Number(config.landscape.size) || 64));
+		const halfX = ((size / 2 + 4) / Math.max(1, window.innerWidth)) * 100;
+		const halfY = ((size / 2 + 4) / Math.max(1, window.innerHeight)) * 100;
+		return {
+			minX: Math.min(50, halfX),
+			maxX: Math.max(50, 100 - halfX),
+			minY: Math.min(50, halfY),
+			maxY: Math.max(50, 100 - halfY),
+		};
+	}
+
+	function clampLandscapePosition(x, y) {
+		const bounds = landscapePositionBounds();
+		const nextX = Number(x);
+		const nextY = Number(y);
+		return {
+			x: Math.min(bounds.maxX, Math.max(bounds.minX, Number.isFinite(nextX) ? nextX : 50)),
+			y: Math.min(bounds.maxY, Math.max(bounds.minY, Number.isFinite(nextY) ? nextY : 50)),
+		};
 	}
 
 	function rebuildLandscapeButtons() {
@@ -1007,8 +1062,9 @@
 		wrap.innerHTML = '';
 		for (const button of config.landscape.buttons) {
 			const element = createActionButton(button, true);
-			element.style.left = (button.x || 50) + '%';
-			element.style.top = (button.y || 50) + '%';
+			const position = clampLandscapePosition(button.x, button.y);
+			element.style.left = position.x + '%';
+			element.style.top = position.y + '%';
 			wrap.appendChild(element);
 		}
 	}
@@ -1165,9 +1221,10 @@
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="portrait">' +
 			'<div class="zzSheetRow"><label>Input mode</label><select id="zzPortraitInputMode"><option value="gesture">Gestures</option><option value="buttons">Buttons</option></select></div>' +
+			'<div class="zzSheetRow"><label>Button size</label><input type="range" id="zzPortraitSize" min="44" max="96" step="1"><input type="number" class="zzNum" id="zzPortraitSizeNum" min="44" max="96" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Left shape</label><select id="zzPortraitLeftShape"><option value="wide">Wide / pair / wide</option><option value="grid">2 × 2 grid</option></select></div>' +
 			'<div class="zzSheetRow"><label>Right shape</label><select id="zzPortraitRightShape"><option value="wide">Wide / pair / wide</option><option value="grid">2 × 2 grid</option></select></div>' +
-			'<p class="zzHint">Both clusters use the 3-row wide shape by default. Switch either side to a 2 × 2 grid; use Edit layout to assign actions.</p>' +
+			'<p class="zzHint">Both clusters use the 3-row wide shape by default. Switch either side to a 2 × 2 grid; use Edit layout to assign actions. The button size is capped automatically so both clusters stay on screen.</p>' +
 			'<div class="zzMapGrid"><div class="zzMapCard" id="zzLeftMap"></div><div class="zzMapCard" id="zzRightMap"></div></div>' +
 			'<div class="zzSheetRow"><label>Swipe distance</label><input type="range" id="zzSwipe" min="12" max="60" step="1"><input type="number" class="zzNum" id="zzSwipeNum" min="12" max="60" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Tap max</label><input type="range" id="zzTapMax" min="80" max="400" step="1"><input type="number" class="zzNum" id="zzTapMaxNum" min="80" max="400" step="1" inputmode="numeric"></div>' +
@@ -1220,6 +1277,7 @@
 		buildMapCard($('zzRightMap'), config.portrait.right, 'right');
 		setupThresholds();
 		setupPortraitLayout();
+		setupPortraitSize();
 		setupPortraitShapes();
 		setupPortraitInputMode();
 		setupLandscape();
@@ -1469,6 +1527,40 @@
 		splitNum.addEventListener('change', () => {
 			splitNum.value = Math.round((config.portrait.split || 0.5) * 100);
 		});
+	}
+
+	function setupPortraitSize() {
+		const size = $('zzPortraitSize');
+		const sizeNum = $('zzPortraitSizeNum');
+		if (!size || !sizeNum) return;
+
+		function sync() {
+			size.value = config.portrait.size;
+			sizeNum.value = config.portrait.size;
+		}
+
+		function apply(value) {
+			config.portrait.size = Math.min(96, Math.max(44, value));
+			size.value = config.portrait.size;
+			sizeNum.value = config.portrait.size;
+			saveConfig();
+			updateControlsHeight();
+			requestAnimationFrame(resizeBoard);
+		}
+
+		function updateFromSlider() {
+			apply(parseInt(size.value, 10));
+		}
+
+		function updateFromNumber() {
+			const value = parseInt(sizeNum.value, 10);
+			if (Number.isFinite(value)) apply(value);
+		}
+
+		size.addEventListener('input', updateFromSlider);
+		sizeNum.addEventListener('input', updateFromNumber);
+		sizeNum.addEventListener('change', sync);
+		sync();
 	}
 
 	function setupPortraitShapes() {
@@ -1737,8 +1829,9 @@
 			(layoutSelected === button ? ' zz-selected' : '');
 		element.dataset.buttonId = layoutButtonId(button);
 		if (layoutMode === 'landscape') {
-			element.style.left = (button.x || 50) + '%';
-			element.style.top = (button.y || 50) + '%';
+			const position = clampLandscapePosition(button.x, button.y);
+			element.style.left = position.x + '%';
+			element.style.top = position.y + '%';
 		}
 		element.innerHTML =
 			'<svg aria-hidden="true"><use href="./assets/icons/dark.svg#' +
@@ -1781,8 +1874,9 @@
 			}
 			const dx = (dxPx / window.innerWidth) * 100;
 			const dy = (dyPx / window.innerHeight) * 100;
-			button.x = Math.min(97, Math.max(3, drag.x + dx));
-			button.y = Math.min(97, Math.max(3, drag.y + dy));
+			const position = clampLandscapePosition(drag.x + dx, drag.y + dy);
+			button.x = position.x;
+			button.y = position.y;
 			element.style.left = button.x + '%';
 			element.style.top = button.y + '%';
 		});
