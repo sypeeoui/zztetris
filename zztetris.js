@@ -113,6 +113,7 @@ function restart() {
 	b2b = -1;
 	newPiece();
 	window.ZZStats?.onRestart();
+	window.ZZAttackSim?.onRestart();
 	if (hist[histPos]) hist[histPos].stats = window.ZZStats?.snapshot();
 }
 

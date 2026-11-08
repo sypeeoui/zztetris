@@ -4283,6 +4283,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			lastRotationType,
 		});
 		window.ZZReplayPractice?.afterLock({ cleared, attack });
+		window.ZZAttackSim?.afterLock({ cleared, attack });
 		newPiece();
 
         if (cheese) {

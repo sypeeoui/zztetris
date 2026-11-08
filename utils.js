@@ -85,6 +85,19 @@ function addGarbageRows(column, amount = 1, size = 1) {
 	updateGhost();
 }
 
+// Shared pending-garbage meter used by replay practice and the attack
+// simulator. `pending` is the number of queued garbage lines.
+function updateGarbageMeterDisplay(pending) {
+	const fill = document.getElementById('garbageMeterFill');
+	const count = document.getElementById('garbageCount');
+	if (!fill || !count) return;
+	const amount = Math.max(0, Math.floor(Number(pending) || 0));
+	const maxLines = boardSize[1] - hiddenRows + 3;
+	const lines = Math.min(amount, maxLines);
+	fill.style.height = `${(lines / maxLines) * 100}%`;
+	count.textContent = String(amount);
+}
+
 function addPracticeGarbageUI() {
 	const layers = parseInt(document.getElementById('practiceLayers').value) || 1;
 	const messiness = parseInt(document.getElementById('practiceMessiness').value) || 0;

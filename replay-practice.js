@@ -161,6 +161,7 @@
 		updateQueue();
 		syncEvalChainInputsFromGame?.();
 		active = true;
+		document.body.classList.add('replay-practice');
 		updateGravityControls();
 		updateGarbageMeter();
 		updateStatus();
@@ -292,14 +293,7 @@
 	}
 
 	function updateGarbageMeter() {
-		const fill = $('garbageMeterFill');
-		const count = $('garbageCount');
-		if (!fill || !count) return;
-		const pending = garbageQueue ? garbageQueue.size : 0;
-		const maxLines = boardSize[1] - hiddenRows + 3;
-		const lines = Math.min(pending, maxLines);
-		fill.style.height = `${(lines / maxLines) * 100}%`;
-		count.textContent = String(pending);
+		updateGarbageMeterDisplay(garbageQueue ? garbageQueue.size : 0);
 	}
 
 	function updateStatus() {

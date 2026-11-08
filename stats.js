@@ -356,6 +356,7 @@
 		getState: () => state,
 		getAttackDisplay,
 		getFinesseTable: () => finesseTable,
+		addGarbageReceived,
 	};
 
 	if (document.readyState === 'loading') {

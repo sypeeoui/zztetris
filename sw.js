@@ -4,31 +4,32 @@
 // pick up the new files. The 23 MB legal-boards database and the research
 // pc_data.json are deliberately not precached; the mobile shell does not use
 // the analyzer.
-const CACHE_VERSION = 'zztetris-mobile-b2a49538';
+const CACHE_VERSION = 'zztetris-mobile-e4a120d1';
 
 const ASSETS = [
 	'./index.html?mobile=1',
 	'./manifest.webmanifest',
 	'./styles/mobile.css?v=75f7bf3e',
-	'./styles/zztetris.css?v=55679bba',
+	'./styles/zztetris.css?v=dbdbfd15',
 	'./styles/replay.css?v=e743c488',
 	'./replay.html',
 	'./replay.js?v=093c7a8f',
-	'./replay-practice.js?v=7ad92120',
+	'./replay-practice.js?v=46f0df71',
 	'./replay-common.js?v=8fad533f',
 	'./replay-engine.js?v=db2dd99e',
 	'./styles/paint_bucket.css',
 	'./styles/import_export.css',
 	'./styles/board_settings.css',
-	'./mobile.js?v=3d9d912a',
-	'./base.js?v=ef3281d0',
-	'./zztetris.js?v=7b5dd094',
+	'./mobile.js?v=ba37a6de',
+	'./base.js?v=cee97b2e',
+	'./zztetris.js?v=a0150133',
 	'./stats-config.js?v=09690ca8',
 	'./stats-core.js?v=4c609439',
-	'./stats.js?v=7f77366f',
+	'./stats.js?v=59b7e5a2',
+	'./attack-sim.js?v=00c289f3',
 	'./rotationSystem.js',
 	'./io.js',
-	'./utils.js?v=3157d76e',
+	'./utils.js?v=1db969ba',
 	'./tetris-fumen.js',
 	'./tetrio.js',
 	'./engineWorker.js?v=3df45535',

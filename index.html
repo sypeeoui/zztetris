@@ -3,21 +3,22 @@
 	<script src="assets/vendor/jquery.min.js"></script>
 	<script src="rotationSystem.js"></script>
 	<script src="io.js"></script>
-	<script src="utils.js?v=3157d76e"></script>
+	<script src="utils.js?v=1db969ba"></script>
 	<script src="tetris-fumen.js"></script>
 	<script defer src="stats-config.js?v=09690ca8"></script>
 	<script defer src="stats-core.js?v=4c609439"></script>
 	<script defer src="replay-engine.js?v=db2dd99e"></script>
 	<script defer src="replay-common.js?v=8fad533f"></script>
-	<script defer src="base.js?v=ef3281d0"></script>
+	<script defer src="base.js?v=cee97b2e"></script>
 	<script defer src="tetrio.js"></script>
-	<script defer src="zztetris.js?v=7b5dd094"></script>
-	<script defer src="stats.js?v=7f77366f"></script>
-	<script defer src="replay-practice.js?v=7ad92120"></script>
-	<script defer src="mobile.js?v=3d9d912a"></script>
+	<script defer src="zztetris.js?v=a0150133"></script>
+	<script defer src="stats.js?v=59b7e5a2"></script>
+	<script defer src="attack-sim.js?v=00c289f3"></script>
+	<script defer src="replay-practice.js?v=46f0df71"></script>
+	<script defer src="mobile.js?v=ba37a6de"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=55679bba" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=dbdbfd15" />
 	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=75f7bf3e" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
@@ -96,6 +97,39 @@
 					<label for="practicePermanent">Permanent</label>
 				</div>
 				<button class="button" onclick="this.blur(); addPracticeGarbageUI();">Add Garbage</button>
+
+				<div id="simulateAttackControls">
+					<h4 class="practice-subheading">Simulate Receiving Attack</h4>
+					<div class="practice-row">
+						<input type="checkbox" id="simulateAttackEnabled" />
+						<label for="simulateAttackEnabled">Enable</label>
+					</div>
+					<div class="practice-row">
+						<label for="simulateAttackApm">Received APM</label>
+						<input type="number" id="simulateAttackApm" min="0" max="300" step="1" value="30" />
+					</div>
+					<div class="practice-row">
+						<label for="simulateAttackMessiness">Messiness (attack size)</label>
+						<input type="range" id="simulateAttackMessiness" min="0" max="100" value="0" />
+						<span class="practice-value" id="simulateAttackMessinessVal">0%</span>
+					</div>
+					<div class="practice-row">
+						<label for="simulateAttackTimeRandom">Time randomness</label>
+						<input type="range" id="simulateAttackTimeRandom" min="0" max="100" value="0" />
+						<span class="practice-value" id="simulateAttackTimeRandomVal">0%</span>
+					</div>
+					<div class="practice-row">
+						<label for="simulateAttackSizeRandom">Size randomness</label>
+						<input type="range" id="simulateAttackSizeRandom" min="0" max="100" value="0" />
+						<span class="practice-value" id="simulateAttackSizeRandomVal">0%</span>
+					</div>
+					<div class="practice-row">
+						<label for="simulateAttackHoleMessiness">Hole messiness</label>
+						<input type="range" id="simulateAttackHoleMessiness" min="0" max="100" value="0" />
+						<span class="practice-value" id="simulateAttackHoleMessinessVal">0%</span>
+					</div>
+					<button class="button" id="simulateAttackResetBtn" type="button">Reset attack queue</button>
+				</div>
 			</div>
 
 			<div class="nav-section">
