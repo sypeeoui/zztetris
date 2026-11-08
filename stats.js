@@ -314,6 +314,12 @@
 		buildPanel();
 		wireResetButtons();
 		installGarbageHooks();
+		// Keep the attack readout in the layout even if an older cached
+		// index.html still marks it hidden.
+		for (const id of ['sessionAttack', 'sessionDamageItem', 'sessionSpikeItem']) {
+			const element = document.getElementById(id);
+			if (element) element.hidden = false;
+		}
 		updatePanel();
 		setInterval(updatePanel, 100);
 	}
