@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="theme-color" content="#111111" />
+		<meta name="robots" content="noindex" />
+		<title>Updating ZZTetris</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #111;
+				color: #fff;
+				font-family: monospace;
+			}
+			main {
+				height: 100%;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 12px;
+				padding: 24px;
+				box-sizing: border-box;
+				text-align: center;
+			}
+			h1 {
+				margin: 0;
+				color: #4caf50;
+				font-size: 22px;
+				letter-spacing: 3px;
+			}
+			p {
+				margin: 0;
+				color: #bbb;
+				font-size: 14px;
+				line-height: 1.5;
+			}
+			a {
+				color: #4caf50;
+				font-size: 14px;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>UPDATING</h1>
+			<p id="status">Clearing the old app shell…</p>
+			<p><a id="manual" href="./index.html?mobile=1" hidden>Open ZZTetris</a></p>
+		</main>
+		<script>
+			(async () => {
+				const status = document.getElementById('status');
+				const manual = document.getElementById('manual');
+				try {
+					if ('serviceWorker' in navigator) {
+						const registrations = await navigator.serviceWorker.getRegistrations();
+						await Promise.all(registrations.map((registration) => registration.unregister()));
+					}
+					if ('caches' in window) {
+						const keys = await caches.keys();
+						await Promise.all(keys.map((key) => caches.delete(key)));
+					}
+					status.textContent = 'Opening the latest version…';
+				} catch (error) {
+					status.textContent = 'Opening the latest version…';
+				}
+				setTimeout(() => {
+					location.replace('./index.html?mobile=1&refresh=' + Date.now());
+				}, 150);
+				setTimeout(() => {
+					manual.hidden = false;
+				}, 4000);
+			})();
+		</script>
+	</body>
+</html>

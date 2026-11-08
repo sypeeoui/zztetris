@@ -12,6 +12,18 @@
 	const STORAGE_KEY = 'zztetris_mobile_v1';
 	const params = new URLSearchParams(location.search);
 
+	// The shell version comes from this script's own ?v= query. It doubles as
+	// the service-worker script URL so a new release is never fetched from an
+	// old CDN cache. Keep it in sync with mobile.js?v= in index.html.
+	const SHELL_VERSION = (() => {
+		try {
+			const src = (document.currentScript && document.currentScript.src) || '';
+			return new URL(src, location.href).searchParams.get('v') || '10';
+		} catch (error) {
+			return '10';
+		}
+	})();
+
 	const ACTIONS = [
 		{ value: '', label: 'None' },
 		{ value: 'L', label: 'Move Left' },
@@ -324,10 +336,48 @@
 		if (install) install.hidden = false;
 	});
 
+	if ('serviceWorker' in navigator) {
+		// Reload once when a newer worker takes control, so an update does not
+		// need the user to close and reopen the installed app.
+		const hadController = !!navigator.serviceWorker.controller;
+		let reloading = false;
+		navigator.serviceWorker.addEventListener('controllerchange', () => {
+			if (!hadController || reloading) return;
+			reloading = true;
+			location.reload();
+		});
+	}
+
 	if (!params.get('nosw') && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
 		window.addEventListener('load', () => {
-			navigator.serviceWorker.register('sw.js?v=11').catch(() => {});
+			navigator.serviceWorker
+				.register('sw.js?v=' + encodeURIComponent(SHELL_VERSION), { updateViaCache: 'none' })
+				.then((registration) => {
+					const check = () => registration.update().catch(() => {});
+					document.addEventListener('visibilitychange', () => {
+						if (!document.hidden) check();
+					});
+					window.addEventListener('online', check);
+					setInterval(check, 15 * 60 * 1000);
+				})
+				.catch(() => {});
 		});
+	}
+
+	async function clearShellCacheAndReload() {
+		try {
+			if ('serviceWorker' in navigator) {
+				const registrations = await navigator.serviceWorker.getRegistrations();
+				await Promise.all(registrations.map((registration) => registration.unregister()));
+			}
+			if ('caches' in window) {
+				const keys = await caches.keys();
+				await Promise.all(keys.map((key) => caches.delete(key)));
+			}
+		} catch (error) {
+			// Reload anyway; the versioned URL still bypasses an old shell.
+		}
+		location.replace('./index.html?mobile=1&refresh=' + Date.now());
 	}
 
 	document.addEventListener('keydown', (event) => {
@@ -993,13 +1043,16 @@
 			'<div class="zzTabPanel" data-panel="app">' +
 			'<button class="zzSheetBtn" id="zzInstallBtn" hidden>Install app</button>' +
 			'<button class="zzSheetBtn" id="zzFullscreenBtn">Enter fullscreen</button>' +
+			'<button class="zzSheetBtn" id="zzClearCache">Clear cache and update</button>' +
 			'<div class="zzSheetRow"><label>Pause button</label><select id="zzPauseCorner"><option value="top-right">Top right</option><option value="top-left">Top left</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>' +
 			'<div class="zzSheetRow"><label>Show hold</label><input type="checkbox" id="zzShowHold"></div>' +
 			'<div class="zzSheetRow"><label>Show next</label><input type="checkbox" id="zzShowNext"></div>' +
 			'<div class="zzSheetRow"><label>Show stats</label><input type="checkbox" id="zzShowStats"></div>' +
 			'<div class="zzSheetRow"><label>Extra stat</label><select id="zzExtraStat"></select></div>' +
 			'<button class="zzSheetBtn zzSheetBtn--danger" id="zzResetSettings">Reset mobile settings</button>' +
-			'<p class="zzHint">ZZTetris mobile · gesture and button controls</p>' +
+			'<p class="zzHint">ZZTetris mobile · shell v' +
+			SHELL_VERSION +
+			' · gesture and button controls</p>' +
 			'</div>' +
 			'</div>';
 		document.body.appendChild(overlay);
@@ -1619,6 +1672,14 @@
 		const install = $('zzInstallBtn');
 		const fullscreen = $('zzFullscreenBtn');
 		const reset = $('zzResetSettings');
+		const clear = $('zzClearCache');
+		if (clear) {
+			clear.addEventListener('click', async () => {
+				clear.disabled = true;
+				clear.textContent = 'Clearing cache…';
+				await clearShellCacheAndReload();
+			});
+		}
 		if (install) {
 			install.hidden = !deferredPrompt;
 			install.addEventListener('click', async () => {

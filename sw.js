@@ -4,7 +4,7 @@
 // pick up the new files. The 23 MB legal-boards database and the research
 // pc_data.json are deliberately not precached; the mobile shell does not use
 // the analyzer.
-const CACHE_VERSION = 'zztetris-mobile-v11';
+const CACHE_VERSION = 'zztetris-mobile-v12';
 
 const ASSETS = [
 	'./index.html?mobile=1',
@@ -14,7 +14,7 @@ const ASSETS = [
 	'./styles/paint_bucket.css',
 	'./styles/import_export.css',
 	'./styles/board_settings.css',
-	'./mobile.js?v=9',
+	'./mobile.js?v=10',
 	'./base.js?v=25',
 	'./zztetris.js',
 	'./stats-config.js',
@@ -103,6 +103,29 @@ self.addEventListener('fetch', (event) => {
 	if (url.origin !== self.location.origin) return;
 	if (url.pathname.endsWith('.leb128') || url.pathname.endsWith('pc_data.json')) return;
 
+	// Navigations are network-first so an online launch always sees a new
+	// index.html and its versioned assets. Cached shell is the offline fallback.
+	if (request.mode === 'navigate') {
+		event.respondWith(
+			fetch(request)
+				.then((response) => {
+					if (response && response.ok) {
+						const copy = response.clone();
+						caches.open(CACHE_VERSION).then((cache) => {
+							cache.put('./index.html?mobile=1', copy);
+						});
+					}
+					return response;
+				})
+				.catch(() =>
+					caches
+						.match(request)
+						.then((cached) => cached || caches.match('./index.html?mobile=1'))
+				)
+		);
+		return;
+	}
+
 	event.respondWith(
 		caches.match(request).then((cached) => {
 			if (cached) return cached;
@@ -114,12 +137,7 @@ self.addEventListener('fetch', (event) => {
 					}
 					return response;
 				})
-				.catch(() => {
-					if (request.mode === 'navigate') {
-						return caches.match('./index.html?mobile=1');
-					}
-					return new Response('', { status: 504, statusText: 'Offline' });
-				});
+				.catch(() => new Response('', { status: 504, statusText: 'Offline' }));
 		})
 	);
 });
