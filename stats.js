@@ -125,16 +125,10 @@
 		}
 
 		const attack = getAttackDisplay();
-		const attackEl = document.getElementById('sessionAttack');
 		const damageEl = document.getElementById('sessionDamage');
-		const damageItem = document.getElementById('sessionDamageItem');
 		const spikeEl = document.getElementById('sessionSpike');
-		const spikeItem = document.getElementById('sessionSpikeItem');
 		if (damageEl) damageEl.textContent = String(attack.damage);
 		if (spikeEl) spikeEl.textContent = String(attack.spike);
-		if (damageItem) damageItem.hidden = attack.damage <= 0;
-		if (spikeItem) spikeItem.hidden = attack.spike <= 0;
-		if (attackEl) attackEl.hidden = attack.damage <= 0 && attack.spike <= 0;
 
 		const statsEl = document.getElementById('sessionStats');
 		if (!statsEl) return;

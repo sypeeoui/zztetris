@@ -4029,7 +4029,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 	function softDrop() {
+		// Move once immediately. Mobile browsers can delay the first 0ms
+		// interval after a touch by ~100ms, which made soft drop feel like it
+		// needed a hold before starting.
 		if (SDR) {
+			move('SD');
 			let loop = setInterval(() => {
 				if (!zzPaused && keysDown & flags.SD) {
 					move('SD');
@@ -4039,6 +4043,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			}, SDR);
 		} else {
 			// SDR is 0ms = instant SD
+			if (yPOS != yGHO) lastAction = 'SD';
+			yPOS = yGHO;
+			clearActive();
+			setShape();
 			let loop = setInterval(() => {
 				if (!zzPaused && keysDown & flags.SD) {
 					yPOS = yGHO;

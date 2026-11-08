@@ -187,10 +187,6 @@ html.mobile #zzStatsMini .zzStatRow {
 	overflow: hidden;
 }
 
-html.mobile #zzStatsMini .zzStatRow[hidden] {
-	display: none;
-}
-
 html.mobile #zzStatsMini .zzStatRow span {
 	color: #9e9e9e;
 	overflow: hidden;

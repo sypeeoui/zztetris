@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-v17';
+	const SW_CACHE_VERSION = 'zztetris-mobile-v18';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -614,8 +614,8 @@
 		stats.innerHTML =
 			'<div class="zzStatRow"><span>B2B</span><b id="zzStatB2B">0</b></div>' +
 			'<div class="zzStatRow"><span>CMB</span><b id="zzStatCombo">0</b></div>' +
-			'<div class="zzStatRow" id="zzStatDamageRow" hidden><span>DMG</span><b id="zzStatDamage">0</b></div>' +
-			'<div class="zzStatRow" id="zzStatSpikeRow" hidden><span>SPK</span><b id="zzStatSpike">0</b></div>' +
+			'<div class="zzStatRow" id="zzStatDamageRow"><span>DMG</span><b id="zzStatDamage">0</b></div>' +
+			'<div class="zzStatRow" id="zzStatSpikeRow"><span>SPK</span><b id="zzStatSpike">0</b></div>' +
 			'<div class="zzStatRow"><span>PPS</span><b id="zzStatPps">0.00</b></div>' +
 			'<div class="zzStatRow"><span>APM</span><b id="zzStatApm">0.0</b></div>' +
 			'<div class="zzStatRow"><span>VS</span><b id="zzStatVs">0.0</b></div>' +
@@ -651,14 +651,10 @@
 		set('zzStatVs', 'vs');
 
 		const attack = api.getAttackDisplay ? api.getAttackDisplay() : { damage: 0, spike: 0 };
-		const damageRow = $('zzStatDamageRow');
-		const spikeRow = $('zzStatSpikeRow');
 		const damageValue = $('zzStatDamage');
 		const spikeValue = $('zzStatSpike');
 		if (damageValue) damageValue.textContent = String(attack.damage);
 		if (spikeValue) spikeValue.textContent = String(attack.spike);
-		if (damageRow) damageRow.hidden = attack.damage <= 0;
-		if (spikeRow) spikeRow.hidden = attack.spike <= 0;
 
 		const extraId = config.display.extraStat || 'finesse';
 		const def = configApi.STAT_DEFS.find((entry) => entry.id === extraId);
