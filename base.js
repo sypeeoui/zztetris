@@ -220,7 +220,7 @@ const notf = $('#notif');
 
 const names = 'ZLOSIJT'.split(''); // piece names
 
-const spawn = [3, hiddenRows - 2];
+const spawn = [3, hiddenRows - 3];
 const a = { t: 0, c: '' }; // t:0 = nothing   t:1 = heap mino   t:2 = current mino   t:3 = ghost mino
 //? ^^ ??? - g3ner1c
 
@@ -287,7 +287,7 @@ function setCellSize(size) {
 	cellSize = next;
 	const canvas = document.getElementById('b');
 	if (canvas) {
-		canvas.height = (boardSize[1] - hiddenRows + 2) * cellSize;
+		canvas.height = (boardSize[1] - hiddenRows + 3) * cellSize;
 		canvas.width = boardSize[0] * cellSize;
 	}
 	if (typeof gridCvs !== 'undefined' && gridCvs) {
@@ -629,7 +629,7 @@ function ensureLegalBoardsLoaded() {
 for (let i = 0; i < boardSize[1]; i++) {
 	board.push(aRow());
 }
-document.getElementById('b').height = (boardSize[1] - hiddenRows + 2) * cellSize;
+document.getElementById('b').height = (boardSize[1] - hiddenRows + 3) * cellSize;
 document.getElementById('b').width = boardSize[0] * cellSize;
 
 var keys = Object.keys(imgs);
@@ -662,7 +662,7 @@ document.getElementById('b').onmousemove = function mousemove(e) {
 	y = Math.floor((e.clientY - rect.top - 18) / cellSize);
 	x = Math.floor((e.clientX - rect.left - 18) / cellSize);
 
-	if (inRange(x, 0, 9) && inRange(y, 0, 21)) {
+	if (inRange(x, 0, 9) && inRange(y, 0, 22)) {
 		movingCoordinates = y != mouseY || x != mouseX;
 
 		mouseY = y;
@@ -670,9 +670,9 @@ document.getElementById('b').onmousemove = function mousemove(e) {
 
 		if (mouseDown && movingCoordinates) {
 			if (!drawMode) {
-				board[boardSize[1] + mouseY - hiddenRows - 2][mouseX] = { t: 0, c: '' };
+				board[boardSize[1] + mouseY - hiddenRows - 3][mouseX] = { t: 0, c: '' };
 			} else {
-				board[boardSize[1] + mouseY - hiddenRows - 2][mouseX] = { t: 1, c: paintbucketColor() };
+				board[boardSize[1] + mouseY - hiddenRows - 3][mouseX] = { t: 1, c: paintbucketColor() };
 			}
 			updateGhost();
 		}
@@ -684,19 +684,19 @@ document.getElementById('b').onmousedown = function mousedown(e) {
 	mouseY = Math.floor((e.clientY - rect.top - 18) / cellSize);
 	mouseX = Math.floor((e.clientX - rect.left - 18) / cellSize);
 
-	if (inRange(mouseX, 0, 9) && inRange(mouseY, 0, 21)) {
+	if (inRange(mouseX, 0, 9) && inRange(mouseY, 0, 22)) {
 		if (!mouseDown) {
 			movingCoordinates = false;
-			drawMode = e.button != 0 || board[boardSize[1] + mouseY - hiddenRows - 2][mouseX]['t'] == 1;
+			drawMode = e.button != 0 || board[boardSize[1] + mouseY - hiddenRows - 3][mouseX]['t'] == 1;
 			if (drawMode) {
-				board[boardSize[1] + mouseY - hiddenRows - 2][mouseX] = { t: 0, c: '' };
+				board[boardSize[1] + mouseY - hiddenRows - 3][mouseX] = { t: 0, c: '' };
 			} else {
-				board[boardSize[1] + mouseY - hiddenRows - 2][mouseX] = { t: 1, c: paintbucketColor() };
+				board[boardSize[1] + mouseY - hiddenRows - 3][mouseX] = { t: 1, c: paintbucketColor() };
 			}
 			updateGhost();
 		}
 		mouseDown = true;
-		drawMode = board[boardSize[1] + mouseY - hiddenRows - 2][mouseX]['t'] == 1;
+		drawMode = board[boardSize[1] + mouseY - hiddenRows - 3][mouseX]['t'] == 1;
 	}
 };
 
@@ -3610,7 +3610,7 @@ function drawEvaluationOverlay(phase = 'all') {
 
 	const drawOverlayCell = (cell, isNext) => {
 		const boardRowIndex = boardSize[1] - 1 - cell.y;
-		const drawY = boardRowIndex - hiddenRows + 2;
+		const drawY = boardRowIndex - hiddenRows + 3;
 		if (!inRange(drawY, 0, boardSize[1])) return;
 
 		const pieceHex = color[cell.piece] || '#ffffff';
@@ -4465,10 +4465,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		board.map((y, i) => {
 			y.map((x, ii) => {
 				if (x.t !== 0) {
-					drawCell(ii + 1, i - hiddenRows + 2, x.c, x.t);
-				} else if (i < spawn[1] + 2) {
-					// render the top 2 rows as grey
-					drawCell(ii + 1, i - hiddenRows + 2, 'A', 1);
+					drawCell(ii + 1, i - hiddenRows + 3, x.c, x.t);
+				} else if (i <= spawn[1] + 2) {
+					// render the top 3 rows as grey
+					drawCell(ii + 1, i - hiddenRows + 3, 'A', 1);
 				}
 			});
 		});
