@@ -30,30 +30,71 @@
 		{ value: 'RESET_QUEUE_HOLD', label: 'Reset Queue + Hold' },
 	];
 
-	function defaultButtons(preset) {
+	const ACTION_ICONS = {
+		L: 's-back',
+		R: 's-forward',
+		SD: 's-down',
+		HD: 's-harddrop',
+		HL: 's-hold',
+		CW: 's-cw',
+		CCW: 's-ccw',
+		R180: 's-r180',
+		UNDO: 's-un',
+		REDO: 's-reload',
+		RE: 's-reload',
+		RESET_SESSION: 's-reload',
+		RESET_QUEUE: 's-reload',
+		RESET_QUEUE_HOLD: 's-reload',
+	};
+
+	const HOLD_ACTIONS = new Set(['L', 'R', 'SD']);
+
+	const PORTRAIT_SLOTS = {
+		SD: { cluster: 'left', col: 1, row: 1, span: 2 },
+		L: { cluster: 'left', col: 1, row: 2 },
+		R: { cluster: 'left', col: 2, row: 2 },
+		R180: { cluster: 'left', col: 1, row: 3, span: 2 },
+		CCW: { cluster: 'right', col: 1, row: 1 },
+		CW: { cluster: 'right', col: 2, row: 1 },
+		HD: { cluster: 'right', col: 1, row: 2 },
+		HL: { cluster: 'right', col: 2, row: 2 },
+	};
+
+	function defaultLandscapeButtons(preset) {
 		const buttons = [
-			{ id: 'L', cluster: 'left', col: 1, row: 2, action: 'L', icon: 's-back', hold: true },
-			{ id: 'R', cluster: 'left', col: 2, row: 2, action: 'R', icon: 's-forward', hold: true },
-			{ id: 'SD', cluster: 'left', col: 1, row: 1, span: 2, action: 'SD', icon: 's-down', hold: true },
-			{ id: 'CCW', cluster: 'right', col: 1, row: 1, action: 'CCW', icon: 's-ccw', hold: false },
-			{ id: 'CW', cluster: 'right', col: 2, row: 1, action: 'CW', icon: 's-cw', hold: false },
-			{ id: 'HD', cluster: 'right', col: 1, row: 2, span: 2, action: 'HD', icon: 's-harddrop', hold: false },
-			{ id: 'HL', cluster: 'right', col: 1, row: 3, action: 'HL', icon: 's-hold', hold: false },
-			{ id: 'R180', cluster: 'right', col: 2, row: 3, action: 'R180', icon: 's-r180', hold: false },
+			{ id: 'L', x: 5, y: 89, action: 'L', icon: 's-back', hold: true },
+			{ id: 'R', x: 14, y: 89, action: 'R', icon: 's-forward', hold: true },
+			{ id: 'SD', x: 9.5, y: 67, action: 'SD', icon: 's-down', hold: true },
+			{ id: 'CCW', x: 87, y: 51, action: 'CCW', icon: 's-ccw', hold: false },
+			{ id: 'CW', x: 95, y: 51, action: 'CW', icon: 's-cw', hold: false },
+			{ id: 'HD', x: 91, y: 70, action: 'HD', icon: 's-harddrop', hold: false },
+			{ id: 'HL', x: 87, y: 88, action: 'HL', icon: 's-hold', hold: false },
+			{ id: 'R180', x: 95, y: 88, action: 'R180', icon: 's-r180', hold: false },
 		];
 		if (preset === 'left-handed') {
-			for (const button of buttons) {
-				button.cluster = button.cluster === 'left' ? 'right' : 'left';
-				if (!button.span) button.col = 3 - button.col;
-			}
+			for (const button of buttons) button.x = 100 - button.x;
 		}
 		return buttons;
 	}
 
+	function defaultPortraitButtons() {
+		return [
+			{ slot: 'SD', action: 'SD', icon: 's-down', hold: true },
+			{ slot: 'L', action: 'L', icon: 's-back', hold: true },
+			{ slot: 'R', action: 'R', icon: 's-forward', hold: true },
+			{ slot: 'R180', action: 'R180', icon: 's-r180', hold: false },
+			{ slot: 'CCW', action: 'CCW', icon: 's-ccw', hold: false },
+			{ slot: 'CW', action: 'CW', icon: 's-cw', hold: false },
+			{ slot: 'HD', action: 'HD', icon: 's-harddrop', hold: false },
+			{ slot: 'HL', action: 'HL', icon: 's-hold', hold: false },
+		];
+	}
+
 	const DEFAULT_CONFIG = {
-		version: 2,
+		version: 3,
 		portrait: {
 			split: 0.5,
+			inputMode: 'gesture',
 			left: {
 				tap: 'HL',
 				longPress: null,
@@ -80,17 +121,21 @@
 				longPress: 300,
 				deadZone: 10,
 			},
+			buttons: defaultPortraitButtons(),
 		},
 		landscape: {
 			preset: 'techmino',
+			inputMode: 'buttons',
 			size: 64,
 			opacity: 55,
 			haptics: true,
-			buttons: defaultButtons('techmino'),
+			buttons: defaultLandscapeButtons('techmino'),
 		},
 		display: {
 			showHold: true,
 			showNext: true,
+			showStats: true,
+			extraStat: 'finesse',
 		},
 		pauseCorner: 'top-right',
 	};
@@ -128,11 +173,30 @@
 			stored = null;
 		}
 		const merged = mergeDeep(clone(DEFAULT_CONFIG), stored);
-		// v1 hid the hold/next strips by default. Show them once on upgrade;
-		// the user can still hide them again in Settings.
-		if (!stored || stored.version !== 2) {
-			merged.version = 2;
-			merged.display = { showHold: true, showNext: true };
+		if (!stored || stored.version !== 3) {
+			merged.version = 3;
+			// v1 hid the hold/next strips by default. Show them once on upgrade;
+			// the user can still hide them again in Settings.
+			if (!stored || stored.version < 2) {
+				merged.display = {
+					showHold: true,
+					showNext: true,
+					showStats: true,
+					extraStat: 'finesse',
+				};
+			}
+			if (!merged.display) {
+				merged.display = {
+					showHold: true,
+					showNext: true,
+					showStats: true,
+					extraStat: 'finesse',
+				};
+			}
+			if (!merged.display.extraStat) merged.display.extraStat = 'finesse';
+			if (typeof merged.display.showStats !== 'boolean') merged.display.showStats = true;
+			if (!merged.portrait.inputMode) merged.portrait.inputMode = 'gesture';
+			if (!merged.landscape.inputMode) merged.landscape.inputMode = 'buttons';
 		}
 		return merged;
 	}
@@ -141,24 +205,36 @@
 	normalizeConfig();
 
 	function normalizeConfig() {
-		const defaults = defaultButtons('techmino');
+		const landscapeDefaults = defaultLandscapeButtons('techmino');
 		const byId = {};
-		for (const button of defaults) byId[button.id] = button;
+		for (const button of landscapeDefaults) byId[button.id] = button;
 		if (!Array.isArray(config.landscape.buttons) || !config.landscape.buttons.length) {
-			config.landscape.buttons = defaultButtons(
+			config.landscape.buttons = defaultLandscapeButtons(
 				config.landscape.preset === 'left-handed' ? 'left-handed' : 'techmino'
 			);
-			return;
+		} else {
+			for (const button of config.landscape.buttons) {
+				const fallback = byId[button.id];
+				if (!fallback) continue;
+				if (!button.icon) button.icon = fallback.icon;
+				if (typeof button.hold !== 'boolean') button.hold = fallback.hold;
+				if (typeof button.x !== 'number') button.x = fallback.x;
+				if (typeof button.y !== 'number') button.y = fallback.y;
+			}
 		}
-		for (const button of config.landscape.buttons) {
-			const fallback = byId[button.id];
-			if (!fallback) continue;
-			if (!button.icon) button.icon = fallback.icon;
-			if (typeof button.hold !== 'boolean') button.hold = fallback.hold;
-			if (!button.cluster) button.cluster = fallback.cluster;
-			if (!button.col) button.col = fallback.col;
-			if (!button.row) button.row = fallback.row;
-			if (fallback.span) button.span = fallback.span;
+
+		const portraitDefaults = defaultPortraitButtons();
+		const bySlot = {};
+		for (const button of portraitDefaults) bySlot[button.slot] = button;
+		if (!Array.isArray(config.portrait.buttons) || !config.portrait.buttons.length) {
+			config.portrait.buttons = defaultPortraitButtons();
+		} else {
+			for (const button of config.portrait.buttons) {
+				const fallback = bySlot[button.slot];
+				if (!fallback) continue;
+				if (!button.icon) button.icon = fallback.icon;
+				if (typeof button.hold !== 'boolean') button.hold = fallback.hold;
+			}
 		}
 	}
 
@@ -209,14 +285,17 @@
 	if (notif) document.body.appendChild(notif);
 
 	buildHud();
+	buildStatsMini();
 	buildPauseButton();
 	buildPortraitControls();
+	buildPortraitButtons();
 	buildLandscapeControls();
 	buildPauseMenu();
 	buildSettings();
 	buildBoardSheet();
 	buildQueueSheet();
 	buildModeMenu();
+	buildLayoutEditor();
 	setupBoardDrawing();
 
 	updateOrientation();
@@ -253,7 +332,14 @@
 
 	document.addEventListener('keydown', (event) => {
 		if (event.key !== 'Escape') return;
-		const overlays = ['zzSettingsSheet', 'zzBoardSheet', 'zzQueueSheet', 'zzModeMenu', 'zzPauseMenu'];
+		const overlays = [
+			'zzLayoutEditor',
+			'zzSettingsSheet',
+			'zzBoardSheet',
+			'zzQueueSheet',
+			'zzModeMenu',
+			'zzPauseMenu',
+		];
 		for (const id of overlays) {
 			const element = $(id);
 			if (!element || element.hidden) continue;
@@ -261,6 +347,8 @@
 			else if (id === 'zzModeMenu') {
 				hide(id);
 				setPaused(false);
+			} else if (id === 'zzLayoutEditor') {
+				closeLayoutEditor();
 			} else {
 				closeSubSheet(id);
 			}
@@ -276,11 +364,31 @@
 	function updateOrientation() {
 		orientation = window.innerHeight >= window.innerWidth ? 'portrait' : 'landscape';
 		root.dataset.mobileOrientation = orientation;
-		const controlsHeight = Math.round(Math.min(Math.max(window.innerHeight * 0.24, 120), 200));
-		root.style.setProperty('--zz-controls-height', controlsHeight + 'px');
-		updateHudVisibility();
+		applyInputModes();
 		applyPauseCorner();
 		requestAnimationFrame(resizeBoard);
+	}
+
+	function applyInputModes() {
+		root.dataset.inputMode = config.portrait.inputMode || 'gesture';
+		root.dataset.landscapeInputMode = config.landscape.inputMode || 'buttons';
+		updateControlsHeight();
+		updateHudVisibility();
+		requestAnimationFrame(resizeBoard);
+	}
+
+	function updateControlsHeight() {
+		let height;
+		if (orientation === 'portrait') {
+			if (config.portrait.inputMode === 'buttons') {
+				height = Math.max(200, config.landscape.size * 3 + 32);
+			} else {
+				height = Math.min(Math.max(window.innerHeight * 0.24, 120), 200);
+			}
+		} else {
+			height = 120;
+		}
+		root.style.setProperty('--zz-controls-height', Math.round(height) + 'px');
 	}
 
 	function resizeBoard() {
@@ -322,7 +430,7 @@
 		if (next) {
 			next.addEventListener('click', () => {
 				setPaused(true);
-				openSubSheet('zzQueueSheet', 'zzPauseMenu');
+				openQueueSheet('zzPauseMenu');
 			});
 		}
 		updateHudVisibility();
@@ -337,6 +445,14 @@
 		const next = $('zzNextMini');
 		if (hold) hold.hidden = !config.display.showHold;
 		if (next) next.hidden = !config.display.showNext;
+		const stats = $('zzStatsMini');
+		if (stats) {
+			stats.hidden = !config.display.showStats;
+			const holdTop = config.pauseCorner === 'top-left' ? 56 : 6;
+			stats.style.top = config.display.showHold
+				? 'calc(' + (holdTop + 42) + 'px + env(safe-area-inset-top))'
+				: 'calc(6px + env(safe-area-inset-top))';
+		}
 	}
 
 	function drawHud() {
@@ -365,6 +481,99 @@
 				}
 			}
 		}
+		updateStatsMini();
+	}
+
+	function buildStatsMini() {
+		const stats = document.createElement('div');
+		stats.id = 'zzStatsMini';
+		stats.innerHTML =
+			'<div class="zzStatRow"><span>B2B</span><b id="zzStatB2B">0</b></div>' +
+			'<div class="zzStatRow"><span>CMB</span><b id="zzStatCombo">0</b></div>' +
+			'<div class="zzStatRow"><span>PPS</span><b id="zzStatPps">0.00</b></div>' +
+			'<div class="zzStatRow"><span>APM</span><b id="zzStatApm">0.0</b></div>' +
+			'<div class="zzStatRow"><span>VS</span><b id="zzStatVs">0.0</b></div>' +
+			'<div class="zzStatRow"><span id="zzStatExtraLabel">FIN</span><b id="zzStatExtra">—</b></div>';
+		document.body.appendChild(stats);
+		updateStatsMini();
+	}
+
+	function updateStatsMini() {
+		const stats = $('zzStatsMini');
+		if (!stats || stats.hidden) return;
+		const core = window.ZZStatsCore;
+		const configApi = window.ZZStatsConfig;
+		const api = window.ZZStats;
+		if (!core || !configApi || !api) return;
+		const state = api.getState();
+		if (!state) return;
+		const now = Date.now();
+		const comboValue = Math.max(0, typeof combo === 'number' ? combo : 0);
+		const b2bValue = Math.max(0, typeof b2b === 'number' ? b2b : 0);
+		const extra = { combo: comboValue, b2b: b2bValue };
+		const set = (id, statId) => {
+			const element = $(id);
+			if (!element) return;
+			const value = core.getStatValue(state, statId, now, extra);
+			element.textContent = core.formatStat(statId, value, configApi.STAT_DEFS);
+		};
+		set('zzStatB2B', 'b2b');
+		set('zzStatCombo', 'combo');
+		set('zzStatPps', 'pps');
+		set('zzStatApm', 'apm');
+		set('zzStatVs', 'vs');
+		const extraId = config.display.extraStat || 'finesse';
+		const def = configApi.STAT_DEFS.find((entry) => entry.id === extraId);
+		const label = $('zzStatExtraLabel');
+		if (label) label.textContent = shortStatLabel(def);
+		set('zzStatExtra', extraId);
+	}
+
+	function shortStatLabel(def) {
+		if (!def) return 'EXT';
+		const map = {
+			b2b: 'B2B',
+			combo: 'CMB',
+			pps: 'PPS',
+			apm: 'APM',
+			vs: 'VS',
+			finesse: 'FIN',
+			lines: 'LIN',
+			pieces: 'PCS',
+			attack: 'ATK',
+			holds: 'HLD',
+			keys: 'KEY',
+			lpm: 'LPM',
+			kpp: 'KPP',
+			app: 'APP',
+			garbageReceived: 'GBG',
+			surge: 'SRG',
+			finesseFaults: 'FLT',
+			faultsPerPiece: 'F/P',
+			perfectPieces: 'PRF',
+			faultyPieces: 'FLT',
+			maxCombo: 'MXC',
+			maxB2B: 'MXB',
+			singles: 'SGL',
+			doubles: 'DBL',
+			triples: 'TRP',
+			quads: 'QUD',
+			tspins: 'TSP',
+			miniTspins: 'MTS',
+			allspins: 'ASP',
+			perfectClears: 'PC',
+			tspinEfficiency: 'TSE',
+			allspinEfficiency: 'ASE',
+			quadEfficiency: 'QE',
+			b2bEfficiency: 'B2BE',
+			comboEfficiency: 'CMBE',
+			pcEfficiency: 'PCE',
+			surgeEfficiency: 'SRGE',
+			clearEfficiency: 'CLE',
+			piecesPerLine: 'P/L',
+			holdsPerPiece: 'H/P',
+		};
+		return map[def.id] || def.label.slice(0, 4).toUpperCase();
 	}
 
 	// ---------------------------------------------------------------------
@@ -413,6 +622,7 @@
 					: 'calc(6px + env(safe-area-inset-top))';
 			next.style.top = nextTop;
 		}
+		updateHudVisibility();
 	}
 
 	function setPaused(value) {
@@ -439,7 +649,7 @@
 			'<div class="zzSheet">' +
 			'<div class="zzSheetHeader"><h2>Paused</h2><button class="zzClose" data-close>×</button></div>' +
 			'<button class="zzSheetBtn" data-action="resume">Resume</button>' +
-			'<button class="zzSheetBtn" data-action="restart">Restart</button>' +
+			'<button class="zzSheetBtn" data-action="restart">Reset Board</button>' +
 			'<button class="zzSheetBtn" data-action="board">Board</button>' +
 			'<button class="zzSheetBtn" data-action="queue">Queue</button>' +
 			'<button class="zzSheetBtn" data-action="settings">Settings</button>' +
@@ -457,7 +667,7 @@
 			.addEventListener('click', () => openSubSheet('zzBoardSheet', 'zzPauseMenu'));
 		overlay
 			.querySelector('[data-action="queue"]')
-			.addEventListener('click', () => openSubSheet('zzQueueSheet', 'zzPauseMenu'));
+			.addEventListener('click', () => openQueueSheet('zzPauseMenu'));
 		overlay
 			.querySelector('[data-action="settings"]')
 			.addEventListener('click', () => openSubSheet('zzSettingsSheet', 'zzPauseMenu'));
@@ -481,6 +691,33 @@
 		setupPad($('zzRightPad'), config.portrait.right, 'right');
 		applyPortraitSplit();
 		setTimeout(() => wrap.classList.add('zz-hints-hidden'), 4500);
+	}
+
+	function buildPortraitButtons() {
+		const wrap = document.createElement('div');
+		wrap.id = 'zzPortraitButtons';
+		wrap.innerHTML =
+			'<div class="zzCluster" id="zzPortraitLeftCluster"></div>' +
+			'<div class="zzCluster" id="zzPortraitRightCluster"></div>';
+		document.body.appendChild(wrap);
+		rebuildPortraitButtons();
+	}
+
+	function rebuildPortraitButtons() {
+		const left = $('zzPortraitLeftCluster');
+		const right = $('zzPortraitRightCluster');
+		if (!left || !right) return;
+		left.innerHTML = '';
+		right.innerHTML = '';
+		for (const button of config.portrait.buttons) {
+			const slot = PORTRAIT_SLOTS[button.slot];
+			if (!slot) continue;
+			const element = createActionButton(button, false);
+			element.classList.toggle('zzBtn--wide', !!slot.span);
+			element.style.gridColumn = slot.span ? '1 / span 2' : String(slot.col);
+			element.style.gridRow = String(slot.row);
+			(slot.cluster === 'left' ? left : right).appendChild(element);
+		}
 	}
 
 	function applyPortraitSplit() {
@@ -646,9 +883,6 @@
 	function buildLandscapeControls() {
 		const wrap = document.createElement('div');
 		wrap.id = 'zzLandscapeControls';
-		wrap.innerHTML =
-			'<div class="zzCluster" id="zzLeftCluster"></div>' +
-			'<div class="zzCluster" id="zzRightCluster"></div>';
 		document.body.appendChild(wrap);
 		applyLandscapeVars();
 		rebuildLandscapeButtons();
@@ -657,46 +891,50 @@
 	function applyLandscapeVars() {
 		root.style.setProperty('--zz-btn-size', config.landscape.size + 'px');
 		root.style.setProperty('--zz-btn-opacity', (config.landscape.opacity / 100).toFixed(2));
+		updateControlsHeight();
 		requestAnimationFrame(resizeBoard);
 	}
 
 	function rebuildLandscapeButtons() {
-		const left = $('zzLeftCluster');
-		const right = $('zzRightCluster');
-		if (!left || !right) return;
-		left.innerHTML = '';
-		right.innerHTML = '';
+		const wrap = $('zzLandscapeControls');
+		if (!wrap) return;
+		wrap.innerHTML = '';
 		for (const button of config.landscape.buttons) {
-			const element = document.createElement('button');
-			element.type = 'button';
-			element.className = 'zzBtn' + (button.span ? ' zzBtn--wide' : '');
-			element.dataset.action = button.action;
-			element.style.gridColumn = button.span ? '1 / span 2' : String(button.col);
-			element.style.gridRow = String(button.row);
-			element.innerHTML =
-				'<svg aria-hidden="true"><use href="./assets/icons/dark.svg#' + button.icon + '"></use></svg>';
-			element.addEventListener('pointerdown', (event) => {
-				event.preventDefault();
-				if (paused) return;
-				try {
-					element.setPointerCapture(event.pointerId);
-				} catch (error) {
-					// Pointer capture is best-effort.
-				}
-				element.classList.add('zz-active');
-				if (button.hold) window.ZZInput?.press(button.action);
-				else window.ZZInput?.tap(button.action);
-				haptic();
-			});
-			const release = () => {
-				element.classList.remove('zz-active');
-				if (button.hold) window.ZZInput?.release(button.action);
-			};
-			element.addEventListener('pointerup', release);
-			element.addEventListener('pointercancel', release);
-			element.addEventListener('pointerleave', release);
-			(button.cluster === 'left' ? left : right).appendChild(element);
+			const element = createActionButton(button, true);
+			element.style.left = (button.x || 50) + '%';
+			element.style.top = (button.y || 50) + '%';
+			wrap.appendChild(element);
 		}
+	}
+
+	function createActionButton(button, free) {
+		const element = document.createElement('button');
+		element.type = 'button';
+		element.className = 'zzBtn' + (free ? ' zzBtn--free' : '');
+		element.dataset.action = button.action;
+		element.innerHTML =
+			'<svg aria-hidden="true"><use href="./assets/icons/dark.svg#' + button.icon + '"></use></svg>';
+		element.addEventListener('pointerdown', (event) => {
+			event.preventDefault();
+			if (paused) return;
+			try {
+				element.setPointerCapture(event.pointerId);
+			} catch (error) {
+				// Pointer capture is best-effort.
+			}
+			element.classList.add('zz-active');
+			if (button.hold) window.ZZInput?.press(button.action);
+			else window.ZZInput?.tap(button.action);
+			haptic();
+		});
+		const release = () => {
+			element.classList.remove('zz-active');
+			if (button.hold) window.ZZInput?.release(button.action);
+		};
+		element.addEventListener('pointerup', release);
+		element.addEventListener('pointercancel', release);
+		element.addEventListener('pointerleave', release);
+		return element;
 	}
 
 	function haptic() {
@@ -734,18 +972,22 @@
 			'<p class="zzHint">DAS is the delay before auto-repeat, ARR is the repeat rate, SDR is the soft-drop rate.</p>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="portrait">' +
+			'<div class="zzSheetRow"><label>Input mode</label><select id="zzPortraitInputMode"><option value="gesture">Gestures</option><option value="buttons">Buttons</option></select></div>' +
 			'<div class="zzMapGrid"><div class="zzMapCard" id="zzLeftMap"></div><div class="zzMapCard" id="zzRightMap"></div></div>' +
 			'<div class="zzSheetRow"><label>Swipe distance</label><input type="range" id="zzSwipe" min="12" max="60" step="1"><input type="number" class="zzNum" id="zzSwipeNum" min="12" max="60" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Tap max</label><input type="range" id="zzTapMax" min="80" max="400" step="1"><input type="number" class="zzNum" id="zzTapMaxNum" min="80" max="400" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Long press</label><input type="range" id="zzLongPress" min="150" max="600" step="1"><input type="number" class="zzNum" id="zzLongPressNum" min="150" max="600" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Dead zone</label><input type="range" id="zzDeadZone" min="2" max="24" step="1"><input type="number" class="zzNum" id="zzDeadZoneNum" min="2" max="24" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Pad split</label><input type="range" id="zzPadSplit" min="30" max="70" step="1"><input type="number" class="zzNum" id="zzPadSplitNum" min="30" max="70" step="1" inputmode="numeric"></div>' +
+			'<div class="zzMapCard" id="zzPortraitButtonMap"></div>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="landscape">' +
+			'<div class="zzSheetRow"><label>Input mode</label><select id="zzLandscapeInputMode"><option value="buttons">Buttons</option><option value="gesture">Gestures</option></select></div>' +
 			'<div class="zzSheetRow"><label>Preset</label><select id="zzLandscapePreset"><option value="techmino">Techmino</option><option value="left-handed">Left-handed</option><option value="custom">Custom</option></select></div>' +
 			'<div class="zzSheetRow"><label>Button size</label><input type="range" id="zzBtnSize" min="44" max="96" step="1"><input type="number" class="zzNum" id="zzBtnSizeNum" min="44" max="96" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Opacity</label><input type="range" id="zzBtnOpacity" min="20" max="100" step="1"><input type="number" class="zzNum" id="zzBtnOpacityNum" min="20" max="100" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Haptics</label><input type="checkbox" id="zzHaptics"></div>' +
+			'<button class="zzSheetBtn" id="zzEditLayout">Edit button layout</button>' +
 			'<div class="zzMapCard" id="zzButtonMap"></div>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="app">' +
@@ -754,6 +996,8 @@
 			'<div class="zzSheetRow"><label>Pause button</label><select id="zzPauseCorner"><option value="top-right">Top right</option><option value="top-left">Top left</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>' +
 			'<div class="zzSheetRow"><label>Show hold</label><input type="checkbox" id="zzShowHold"></div>' +
 			'<div class="zzSheetRow"><label>Show next</label><input type="checkbox" id="zzShowNext"></div>' +
+			'<div class="zzSheetRow"><label>Show stats</label><input type="checkbox" id="zzShowStats"></div>' +
+			'<div class="zzSheetRow"><label>Extra stat</label><select id="zzExtraStat"></select></div>' +
 			'<button class="zzSheetBtn zzSheetBtn--danger" id="zzResetSettings">Reset mobile settings</button>' +
 			'<p class="zzHint">ZZTetris mobile · gesture and button controls</p>' +
 			'</div>' +
@@ -779,7 +1023,11 @@
 		buildMapCard($('zzRightMap'), config.portrait.right, 'right');
 		setupThresholds();
 		setupPortraitLayout();
+		setupPortraitInputMode();
+		buildPortraitButtonMap();
 		setupLandscape();
+		setupLandscapeInputMode();
+		setupLayoutEditor();
 		setupDisplay();
 		setupPauseCorner();
 		setupApp();
@@ -1017,6 +1265,47 @@
 		});
 	}
 
+	function setupPortraitInputMode() {
+		const select = $('zzPortraitInputMode');
+		if (!select) return;
+		select.value = config.portrait.inputMode || 'gesture';
+		select.addEventListener('change', () => {
+			config.portrait.inputMode = select.value;
+			saveConfig();
+			applyInputModes();
+		});
+	}
+
+	function buildPortraitButtonMap() {
+		const container = $('zzPortraitButtonMap');
+		if (!container) return;
+		container.innerHTML = '<h4>Portrait buttons</h4>';
+		for (const button of config.portrait.buttons) {
+			const row = document.createElement('div');
+			row.className = 'zzMapRow';
+			const label = document.createElement('label');
+			label.textContent = button.slot;
+			const select = document.createElement('select');
+			for (const option of ACTIONS) {
+				const item = document.createElement('option');
+				item.value = option.value;
+				item.textContent = option.label;
+				select.appendChild(item);
+			}
+			select.value = button.action;
+			select.addEventListener('change', () => {
+				button.action = select.value;
+				button.icon = ACTION_ICONS[button.action] || button.icon;
+				button.hold = HOLD_ACTIONS.has(button.action);
+				saveConfig();
+				rebuildPortraitButtons();
+			});
+			row.appendChild(label);
+			row.appendChild(select);
+			container.appendChild(row);
+		}
+	}
+
 	function setupLandscape() {
 		const preset = $('zzLandscapePreset');
 		const size = $('zzBtnSize');
@@ -1087,7 +1376,7 @@
 	function applyPreset(name) {
 		config.landscape.preset = name;
 		if (name === 'techmino' || name === 'left-handed') {
-			config.landscape.buttons = defaultButtons(name);
+			config.landscape.buttons = defaultLandscapeButtons(name);
 		}
 		saveConfig();
 		rebuildLandscapeButtons();
@@ -1113,6 +1402,8 @@
 			select.value = button.action;
 			select.addEventListener('change', () => {
 				button.action = select.value;
+				button.icon = ACTION_ICONS[button.action] || button.icon;
+				button.hold = HOLD_ACTIONS.has(button.action);
 				config.landscape.preset = 'custom';
 				const preset = $('zzLandscapePreset');
 				if (preset) preset.value = 'custom';
@@ -1125,12 +1416,175 @@
 		}
 	}
 
+	function setupLandscapeInputMode() {
+		const select = $('zzLandscapeInputMode');
+		if (!select) return;
+		select.value = config.landscape.inputMode || 'buttons';
+		select.addEventListener('change', () => {
+			config.landscape.inputMode = select.value;
+			saveConfig();
+			applyInputModes();
+		});
+	}
+
+	function setupLayoutEditor() {
+		const button = $('zzEditLayout');
+		if (!button) return;
+		button.addEventListener('click', openLayoutEditor);
+	}
+
+	function buildLayoutEditor() {
+		const overlay = document.createElement('div');
+		overlay.id = 'zzLayoutEditor';
+		overlay.className = 'zzOverlay zzLayoutOverlay';
+		overlay.hidden = true;
+		overlay.innerHTML =
+			'<div class="zzLayoutBar">' +
+			'<button class="zzSheetBtn" id="zzLayoutDone">Done</button>' +
+			'<button class="zzSheetBtn" id="zzLayoutAdd">Add button</button>' +
+			'<button class="zzSheetBtn" id="zzLayoutReset">Reset</button>' +
+			'</div>' +
+			'<div id="zzLayoutCanvas"></div>' +
+			'<p class="zzHint zzLayoutHint">Drag buttons to move them. Tap × to delete.</p>';
+		document.body.appendChild(overlay);
+		$('zzLayoutDone').addEventListener('click', closeLayoutEditor);
+		$('zzLayoutAdd').addEventListener('click', addLayoutButton);
+		$('zzLayoutReset').addEventListener('click', resetLayout);
+	}
+
+	function openLayoutEditor() {
+		setPaused(true);
+		hide('zzSettingsSheet');
+		rebuildLayoutEditor();
+		show('zzLayoutEditor');
+	}
+
+	function closeLayoutEditor() {
+		hide('zzLayoutEditor');
+		show('zzSettingsSheet');
+		saveConfig();
+		rebuildLandscapeButtons();
+		buildButtonMap();
+	}
+
+	function rebuildLayoutEditor() {
+		const canvas = $('zzLayoutCanvas');
+		if (!canvas) return;
+		canvas.innerHTML = '';
+		for (const button of config.landscape.buttons) {
+			canvas.appendChild(makeEditorButton(button));
+		}
+	}
+
+	function makeEditorButton(button) {
+		const element = document.createElement('button');
+		element.type = 'button';
+		element.className = 'zzBtn zzBtn--free zzBtn--edit';
+		element.style.left = (button.x || 50) + '%';
+		element.style.top = (button.y || 50) + '%';
+		element.innerHTML =
+			'<svg aria-hidden="true"><use href="./assets/icons/dark.svg#' +
+			button.icon +
+			'"></use></svg>' +
+			'<span class="zzBtnLabel">' +
+			(button.action || 'NEW') +
+			'</span>' +
+			'<span class="zzDeleteBadge">×</span>';
+
+		let drag = null;
+		element.addEventListener('pointerdown', (event) => {
+			if (event.target.closest('.zzDeleteBadge')) return;
+			event.preventDefault();
+			try {
+				element.setPointerCapture(event.pointerId);
+			} catch (error) {
+				// Pointer capture is best-effort.
+			}
+			drag = {
+				id: event.pointerId,
+				startX: event.clientX,
+				startY: event.clientY,
+				x: button.x || 50,
+				y: button.y || 50,
+			};
+		});
+		element.addEventListener('pointermove', (event) => {
+			if (!drag || drag.id !== event.pointerId) return;
+			event.preventDefault();
+			const dx = ((event.clientX - drag.startX) / window.innerWidth) * 100;
+			const dy = ((event.clientY - drag.startY) / window.innerHeight) * 100;
+			button.x = Math.min(97, Math.max(3, drag.x + dx));
+			button.y = Math.min(97, Math.max(3, drag.y + dy));
+			element.style.left = button.x + '%';
+			element.style.top = button.y + '%';
+		});
+		const end = (event) => {
+			if (!drag || drag.id !== event.pointerId) return;
+			drag = null;
+			saveConfig();
+		};
+		element.addEventListener('pointerup', end);
+		element.addEventListener('pointercancel', end);
+		element.querySelector('.zzDeleteBadge').addEventListener('click', (event) => {
+			event.stopPropagation();
+			const index = config.landscape.buttons.indexOf(button);
+			if (index >= 0) config.landscape.buttons.splice(index, 1);
+			config.landscape.preset = 'custom';
+			saveConfig();
+			rebuildLayoutEditor();
+			buildButtonMap();
+		});
+		return element;
+	}
+
+	function addLayoutButton() {
+		config.landscape.buttons.push({
+			id: 'CUSTOM' + Date.now(),
+			x: 50,
+			y: 50,
+			action: '',
+			icon: 's-plus',
+			hold: false,
+		});
+		config.landscape.preset = 'custom';
+		saveConfig();
+		rebuildLayoutEditor();
+		buildButtonMap();
+	}
+
+	function resetLayout() {
+		config.landscape.buttons = defaultLandscapeButtons('techmino');
+		config.landscape.preset = 'techmino';
+		const preset = $('zzLandscapePreset');
+		if (preset) preset.value = 'techmino';
+		saveConfig();
+		rebuildLayoutEditor();
+		buildButtonMap();
+	}
+
 	function setupDisplay() {
 		const showHold = $('zzShowHold');
 		const showNext = $('zzShowNext');
+		const showStats = $('zzShowStats');
+		const extraStat = $('zzExtraStat');
 		if (!showHold || !showNext) return;
 		showHold.checked = config.display.showHold;
 		showNext.checked = config.display.showNext;
+		if (showStats) showStats.checked = config.display.showStats;
+		if (extraStat && window.ZZStatsConfig) {
+			for (const def of window.ZZStatsConfig.STAT_DEFS) {
+				const option = document.createElement('option');
+				option.value = def.id;
+				option.textContent = def.label;
+				extraStat.appendChild(option);
+			}
+			extraStat.value = config.display.extraStat || 'finesse';
+			extraStat.addEventListener('change', () => {
+				config.display.extraStat = extraStat.value;
+				saveConfig();
+				updateStatsMini();
+			});
+		}
 		showHold.addEventListener('change', () => {
 			config.display.showHold = showHold.checked;
 			saveConfig();
@@ -1141,6 +1595,13 @@
 			saveConfig();
 			updateHudVisibility();
 		});
+		if (showStats) {
+			showStats.addEventListener('change', () => {
+				config.display.showStats = showStats.checked;
+				saveConfig();
+				updateHudVisibility();
+			});
+		}
 	}
 
 	function setupPauseCorner() {
@@ -1206,10 +1667,14 @@
 		overlay.innerHTML =
 			'<div class="zzSheet">' +
 			'<div class="zzSheetHeader"><h2>Board</h2><button class="zzClose" data-close>×</button></div>' +
+			'<button class="zzSheetBtn zzSheetBtn--danger" id="zzResetBoard">Reset Board</button>' +
 			'<div id="zzBoardBody"></div>' +
 			'</div>';
 		document.body.appendChild(overlay);
 		overlay.querySelector('[data-close]').addEventListener('click', () => closeSubSheet('zzBoardSheet'));
+		$('zzResetBoard').addEventListener('click', () => {
+			if (typeof restart === 'function') restart();
+		});
 
 		const body = $('zzBoardBody');
 		const boardOptions = $('boardOptionsContent');
@@ -1230,17 +1695,73 @@
 			'<button class="zzSheetBtn" id="zzShuffleQueueHold">Shuffle Queue + Hold</button>' +
 			'<button class="zzSheetBtn" id="zzResetQueue">Reset Queue</button>' +
 			'<button class="zzSheetBtn" id="zzResetQueueHold">Reset Queue + Hold</button>' +
+			'<div class="zzQueueEditor">' +
+			'<label for="zzQueueInput">Queue sequence</label>' +
+			'<input id="zzQueueInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">' +
+			'<button class="zzSheetBtn" id="zzApplyQueue">Apply Queue</button>' +
+			'<div class="zzHint" id="zzQueueStatus"></div>' +
+			'</div>' +
 			'</div>';
 		document.body.appendChild(overlay);
 		overlay.querySelector('[data-close]').addEventListener('click', () => closeSubSheet('zzQueueSheet'));
 		$('zzShuffleQueue').addEventListener('click', () => {
 			if (typeof shuffleQueue === 'function') shuffleQueue();
+			refreshQueueEditor(true);
 		});
 		$('zzShuffleQueueHold').addEventListener('click', () => {
 			if (typeof shuffleQueuePlusHold === 'function') shuffleQueuePlusHold();
+			refreshQueueEditor(true);
 		});
-		$('zzResetQueue').addEventListener('click', () => window.ZZStats?.resetQueue());
-		$('zzResetQueueHold').addEventListener('click', () => window.ZZStats?.resetQueueHold());
+		$('zzResetQueue').addEventListener('click', () => {
+			window.ZZStats?.resetQueue();
+			refreshQueueEditor(true);
+		});
+		$('zzResetQueueHold').addEventListener('click', () => {
+			window.ZZStats?.resetQueueHold();
+			refreshQueueEditor(true);
+		});
+		$('zzApplyQueue').addEventListener('click', applyQueueString);
+		$('zzQueueInput').addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				applyQueueString();
+			}
+		});
+	}
+
+	function openQueueSheet(parent) {
+		refreshQueueEditor(true);
+		openSubSheet('zzQueueSheet', parent);
+	}
+
+	function refreshQueueEditor(clearStatus) {
+		const input = $('zzQueueInput');
+		if (input) input.value = typeof queue !== 'undefined' ? queue.join('') : '';
+		if (clearStatus) {
+			const status = $('zzQueueStatus');
+			if (status) status.textContent = '';
+		}
+	}
+
+	function applyQueueString() {
+		const input = $('zzQueueInput');
+		const status = $('zzQueueStatus');
+		if (!input) return;
+		const raw = input.value.toUpperCase().replace(/[^SZLJIOT|]/g, '');
+		if (!/[SZLJIOT]/.test(raw)) {
+			if (status) status.textContent = 'Enter at least one piece (S, Z, L, J, I, O, T).';
+			return;
+		}
+		queue = raw.split('');
+		// updateQueue() draws seven slots; pad a short custom queue so it does
+		// not try to draw missing pieces. newPiece() tops up the bag later.
+		while (queue.length < 7) {
+			queue.push('ZLOSIJT'[Math.floor(Math.random() * 7)]);
+		}
+		if (typeof updateQueue === 'function') updateQueue();
+		if (typeof updateHistory === 'function') updateHistory();
+		refreshQueueEditor(false);
+		if (status) status.textContent = 'Queue applied.';
 	}
 
 	function buildModeMenu() {
