@@ -4128,8 +4128,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	zzGravityMs = gravity;
 	function gravityLoop() {
-		if (!zzPaused && document.getElementById('grav').checked) move('SD', true);
-		if (!zzPaused) window.ZZAutoLock?.onGravity();
+		if (!zzPaused && document.getElementById('grav').checked) move('SD');
 		setTimeout(gravityLoop, Math.max(0, zzGravityMs));
 	}
 	setTimeout(gravityLoop, Math.max(0, zzGravityMs));
@@ -4144,7 +4143,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 
-	function move(dir, fromGravity = false) {
+	function move(dir) {
 		let moved = false;
 		switch (dir) {
 			case 'L':
@@ -4154,7 +4153,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 					// With instant soft drop, follow the new lowest point
 					// immediately. Otherwise a fast ARR can slide past a hole
 					// before the soft-drop timer gets a chance to drop into it.
-					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
+					if (SDR === 0 && (keysDown & flags.SD)) {
+						yPOS = yGHO;
+						window.ZZAutoLock?.onFall();
+					}
 					playSnd('Move');
 					lastAction = 'L';
 					moved = true;
@@ -4164,7 +4166,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				if (canMove(pieces[piece][rot], xPOS + 1, yPOS)) {
 					xPOS++;
 					updateGhost();
-					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
+					if (SDR === 0 && (keysDown & flags.SD)) {
+						yPOS = yGHO;
+						window.ZZAutoLock?.onFall();
+					}
 					playSnd('Move');
 					lastAction = 'R';
 					moved = true;
@@ -4175,14 +4180,15 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 					yPOS++;
 					lastAction = 'SD';
 					moved = true;
+					window.ZZAutoLock?.onFall();
 				}
 				break;
 		}
 		clearActive();
 		setShape();
-		// Gravity drives its own lock-state tick; a player move or soft drop
-		// refreshes the lock delay.
-		if (moved && !fromGravity) window.ZZAutoLock?.onMove();
+		// Horizontal movement is a lock reset in TETR.IO. Falling (gravity or
+		// soft drop) only resets the counters when it reaches a new low row.
+		if (moved && dir !== 'SD') window.ZZAutoLock?.onMove();
 	}
 
 	function rotate(dir) {
@@ -4251,14 +4257,14 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			yPOS = yGHO;
 			clearActive();
 			setShape();
-			if (yPOS !== beforeY) window.ZZAutoLock?.onMove();
+			if (yPOS !== beforeY) window.ZZAutoLock?.onFall();
 			let loop = setInterval(() => {
 				if (!zzPaused && keysDown & flags.SD) {
 					const loopBefore = yPOS;
 					yPOS = yGHO;
 					clearActive();
 					setShape();
-					if (yPOS !== loopBefore) window.ZZAutoLock?.onMove();
+					if (yPOS !== loopBefore) window.ZZAutoLock?.onFall();
 				} else {
 					clearInterval(loop);
 				}

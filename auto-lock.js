@@ -1,13 +1,29 @@
 // TETR.IO-style automatic piece locking.
 //
-// When enabled, a grounded piece locks after the configured delay. A move or
-// rotation refreshes the timer up to the configured number of resets. The
-// module talks to base.js through the small ZZAutoLock hooks; base.js owns
-// the actual lock routine (window.ZZLockPiece).
+// This follows the TETR.IO lock rules as implemented by the @haelp/teto
+// engine (the TETR.IO replay simulator used by replay.js):
+//
+//   - A grounded piece locks once its accumulated ground time passes the lock
+//     delay (TETR.IO's "Lock delay" handling option, 500 ms by default).
+//   - Every successful move or rotation adds one lock reset. While resets
+//     remain, the ground timer is cleared. Once they run out the piece locks
+//     on the next grounded frame, no matter how fast the player keeps
+//     spinning/rotating. TETR.IO also force-falls such a piece at 20G.
+//   - The reset counter is cleared only when the piece reaches a row lower
+//     than any it has reached before. A rotation kick that lifts the piece
+//     off the floor does NOT clear it.
+//   - "Infinite movement" (TETR.IO's handling option) removes the reset
+//     limit: every move/rotation refreshes the timer, so the piece can be
+//     kept alive indefinitely by moving.
+//
+// TETR.IO measures the delay in 60 Hz frames (30 frames = 500 ms) and keeps
+// the counters on the falling piece; base.js owns the actual lock routine
+// (window.ZZLockPiece).
 (function (root) {
 	'use strict';
 
 	const STORAGE_KEY = 'zztetris_auto_lock_v1';
+	const TICK_MS = 16; // TETR.IO advances its lock timer once per 60 Hz frame.
 	const DEFAULTS = {
 		enabled: false,
 		delayMs: 500,
@@ -18,9 +34,17 @@
 	let enabled = DEFAULTS.enabled;
 	let delayMs = DEFAULTS.delayMs;
 	let resetLimit = DEFAULTS.resets;
-	let infiniteResets = DEFAULTS.infinite;
-	let timer = null;
-	let resetsUsed = 0;
+	let infiniteMovement = DEFAULTS.infinite;
+
+	let intervalId = null;
+	let lastTickAt = 0;
+	let paused = false;
+
+	// Per-piece state, mirroring Tetromino.locking / lockResets / highestY.
+	let lockingMs = 0;
+	let lockResets = 0;
+	let lowestRow = 0;
+	let touchedDown = false;
 
 	function $(id) {
 		return document.getElementById(id);
@@ -90,86 +114,129 @@
 		setChecked('autoLockInfinite', settings.infinite);
 	}
 
+	function currentTime() {
+		return typeof performance !== 'undefined' && performance.now
+			? performance.now()
+			: Date.now();
+	}
+
+	function pieceReady() {
+		return (
+			typeof piece !== 'undefined' &&
+			!!piece &&
+			typeof pieces !== 'undefined' &&
+			!!pieces[piece] &&
+			typeof rot === 'number' &&
+			!!pieces[piece][rot] &&
+			typeof xPOS === 'number' &&
+			typeof yPOS === 'number' &&
+			typeof canMove === 'function'
+		);
+	}
+
 	function isGrounded() {
-		if (typeof piece === 'undefined' || !piece) return false;
-		if (typeof pieces === 'undefined' || !pieces[piece]) return false;
-		if (typeof canMove !== 'function') return false;
+		if (!pieceReady()) return false;
 		return !canMove(pieces[piece][rot], xPOS, yPOS + 1);
 	}
 
-	function cancelTimer() {
-		if (timer !== null) {
-			clearTimeout(timer);
-			timer = null;
+	// TETR.IO's #shouldLock(): once the reset budget is spent the piece is
+	// deadlocked and locks on the next grounded frame.
+	function shouldLock() {
+		return !infiniteMovement && lockResets >= resetLimit;
+	}
+
+	function resetPieceState() {
+		lockingMs = 0;
+		lockResets = 0;
+		touchedDown = false;
+		lowestRow = typeof yPOS === 'number' ? yPOS : 0;
+	}
+
+	function lockNow() {
+		if (typeof root.ZZLockPiece === 'function') root.ZZLockPiece();
+	}
+
+	// A gravity or soft-drop step moved the piece down. Reaching a row lower
+	// than any before grants a fresh set of lock resets (TETR.IO's highestY).
+	function onFall() {
+		if (!pieceReady()) return;
+		if (yPOS > lowestRow) {
+			lowestRow = yPOS;
+			lockResets = 0;
 		}
 	}
 
-	function startTimer() {
-		cancelTimer();
-		if (!enabled || !isGrounded()) return;
-		timer = setTimeout(onTimeout, Math.max(0, delayMs));
-	}
-
-	function onTimeout() {
-		timer = null;
-		if (!enabled) return;
-		if (typeof zzPaused !== 'undefined' && zzPaused) {
-			startTimer();
-			return;
-		}
-		if (!isGrounded()) return;
-		if (typeof root.ZZLockPiece === 'function') {
-			root.ZZLockPiece();
-		}
-	}
-
-	// Gravity just moved the piece (or tried to). Start the lock timer if the
-	// piece is resting; do not count gravity as a lock reset.
-	function onGravity() {
-		if (!enabled) return;
-		if (!isGrounded()) {
-			cancelTimer();
-			resetsUsed = 0;
-			return;
-		}
-		if (timer === null) startTimer();
-	}
-
-	// A player move or rotation happened. Refresh the lock timer if the piece
-	// is grounded and resets remain.
+	// A successful horizontal move or rotation. TETR.IO counts any shift or
+	// rotation, whether or not the piece is touching the floor.
 	function onMove() {
-		if (!enabled) return;
-		if (!isGrounded()) {
-			cancelTimer();
-			resetsUsed = 0;
+		if (!enabled || !pieceReady()) return;
+		if (lockResets < 31) lockResets += 1;
+		if (!shouldLock()) lockingMs = 0;
+	}
+
+	function tick() {
+		const time = currentTime();
+		let delta = time - lastTickAt;
+		lastTickAt = time;
+
+		if (!enabled || paused || !pieceReady()) return;
+		// Timers are throttled in background tabs; don't burn the whole lock
+		// delay in one step when the player comes back.
+		if (!(delta >= 0) || delta > 250) delta = TICK_MS;
+
+		const grounded = isGrounded();
+		if (grounded) touchedDown = true;
+
+		if (shouldLock()) {
+			if (grounded) {
+				lockNow();
+				return;
+			}
+			// TETR.IO force-falls a deadlocked piece at 20G and locks it on
+			// contact. A spin kick can lift it, so drop it to its landing row.
+			if (touchedDown && typeof yGHO === 'number' && yPOS < yGHO) {
+				yPOS = yGHO;
+				if (typeof clearActive === 'function') clearActive();
+				if (typeof setShape === 'function') setShape();
+				lockNow();
+			}
 			return;
 		}
-		if (timer === null) {
-			startTimer();
-			return;
-		}
-		if (infiniteResets || resetsUsed < resetLimit) {
-			resetsUsed += 1;
-			startTimer();
-		}
+
+		if (!grounded) return;
+		lockingMs += delta;
+		if (lockingMs > delayMs) lockNow();
+	}
+
+	function startInterval() {
+		if (intervalId !== null) return;
+		lastTickAt = currentTime();
+		intervalId = setInterval(tick, TICK_MS);
+	}
+
+	function stopInterval() {
+		if (intervalId === null) return;
+		clearInterval(intervalId);
+		intervalId = null;
+	}
+
+	function syncInterval() {
+		if (enabled && !paused) startInterval();
+		else stopInterval();
 	}
 
 	function onNewPiece() {
-		cancelTimer();
-		resetsUsed = 0;
+		resetPieceState();
 	}
 
 	function onLock() {
-		cancelTimer();
-		resetsUsed = 0;
+		resetPieceState();
 	}
 
-	function onPause(paused) {
-		if (paused) {
-			cancelTimer();
-		} else if (enabled && isGrounded()) {
-			startTimer();
-		}
+	function onPause(value) {
+		paused = !!value;
+		if (!paused) lastTickAt = currentTime();
+		syncInterval();
 	}
 
 	function applySettings() {
@@ -177,14 +244,9 @@
 		enabled = settings.enabled;
 		delayMs = settings.delayMs;
 		resetLimit = settings.resets;
-		infiniteResets = settings.infinite;
-		if (!enabled) {
-			cancelTimer();
-			resetsUsed = 0;
-		} else if (isGrounded()) {
-			// Apply delay/reset changes immediately for a resting piece.
-			startTimer();
-		}
+		infiniteMovement = settings.infinite;
+		resetPieceState();
+		syncInterval();
 	}
 
 	function bindUi() {
@@ -212,7 +274,7 @@
 
 	root.ZZAutoLock = {
 		onNewPiece,
-		onGravity,
+		onFall,
 		onMove,
 		onLock,
 		onPause,
@@ -221,9 +283,12 @@
 			enabled,
 			delayMs,
 			resetLimit,
-			infiniteResets,
-			timer: timer !== null,
-			resetsUsed,
+			infiniteMovement,
+			timer: intervalId !== null,
+			lockingMs,
+			lockResets,
+			lowestRow,
+			touchedDown,
 			grounded: isGrounded(),
 		}),
 	};
