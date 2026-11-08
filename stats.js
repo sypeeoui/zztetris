@@ -314,6 +314,13 @@
 		buildPanel();
 		wireResetButtons();
 		installGarbageHooks();
+		// The settings popup writes the stats config in another window. Apply
+		// it live instead of reloading the game and losing the board.
+		window.addEventListener('storage', (event) => {
+			if (event.key === configApi.STORAGE_KEY || event.key === null) {
+				refreshConfig();
+			}
+		});
 		// Keep the attack readout in the layout even if an older cached
 		// index.html still marks it hidden.
 		for (const id of ['sessionAttack', 'sessionDamageItem', 'sessionSpikeItem']) {

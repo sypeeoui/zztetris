@@ -8,13 +8,17 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=2', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=3', 'popup', 'width=1200,height=800');
+	if (!p) return;
 	var reloading = false;
 
 	setInterval(() => {
 		// event onbeforeunload wont work and idk why so i gotta use this
 		if (p.closed && !reloading) {
-			location.reload();
+			// Apply the saved settings in place instead of reloading the game,
+			// which would throw away the current board and session.
+			applyStoredConfig();
+			window.ZZStats?.refreshConfig();
 			reloading = true;
 		}
 	}, 100);
@@ -103,6 +107,8 @@ var ctrl = { // default controls
 	KeyI: 'RESET_QUEUE_HOLD',
 
 };
+
+const DEFAULT_CTRL = Object.assign({}, ctrl);
 
 const flags = {
 	HD: 1,
@@ -256,6 +262,7 @@ var yPOS = spawn[1];
 var xGHO = spawn[0];
 var yGHO = spawn[1];
 var lastAction = '';
+var garbageLinesCleared = 0;
 var hist = [];
 var histPos = 0;
 var ctx = document.getElementById('b').getContext('2d');
@@ -270,6 +277,78 @@ gridCtx.fillRect(0, 0, cellSize, cellSize);
 gridCtx.strokeStyle = '#3A3A3A';
 gridCtx.strokeRect(0, 0, cellSize, cellSize);
 var pattern = ctx.createPattern(gridCvs, 'repeat');
+
+// Apply the controls/handling settings from localStorage without reloading
+// the page. The settings popup writes LS.config on every change, so the game
+// can pick them up live and keep the current board and session intact.
+function setCellSize(size) {
+	const next = Math.max(3, Math.min(100, parseInt(size, 10) || 20));
+	if (next === cellSize) return;
+	cellSize = next;
+	const canvas = document.getElementById('b');
+	if (canvas) {
+		canvas.height = (boardSize[1] - hiddenRows + 2) * cellSize;
+		canvas.width = boardSize[0] * cellSize;
+	}
+	if (typeof gridCvs !== 'undefined' && gridCvs) {
+		gridCvs.height = cellSize;
+		gridCvs.width = cellSize;
+		gridCtx.fillStyle = '#000000';
+		gridCtx.fillRect(0, 0, cellSize, cellSize);
+		gridCtx.strokeStyle = '#3A3A3A';
+		gridCtx.strokeRect(0, 0, cellSize, cellSize);
+		pattern = ctx.createPattern(gridCvs, 'repeat');
+	}
+}
+
+function applyStoredConfig() {
+	let CTRLS = null;
+	if (LS.config && LS.version == '2023-05-02a') {
+		try {
+			CTRLS = JSON.parse(LS.config);
+		} catch (error) {
+			CTRLS = null;
+		}
+	}
+
+	if (!Array.isArray(CTRLS)) {
+		ctrl = Object.assign({}, DEFAULT_CTRL);
+		DAS = 160;
+		ARR = 30;
+		SDR = 15;
+		audiolevel = 100;
+		setCellSize(20);
+		return;
+	}
+
+	const codes = ['L', 'R', 'SD', 'HD', 'HL', 'CW', 'CCW', 'R180', 'RE', 'UNDO', 'REDO'];
+	const nextCtrl = {};
+	for (let i = 0; i < 11; i++) {
+		if (CTRLS[i]) nextCtrl[CTRLS[i]] = codes[i];
+	}
+	nextCtrl[CTRLS[16] || 'KeyO'] = 'RESET_SESSION';
+	nextCtrl[CTRLS[17] || 'KeyU'] = 'RESET_QUEUE';
+	nextCtrl[CTRLS[18] || 'KeyI'] = 'RESET_QUEUE_HOLD';
+	ctrl = nextCtrl;
+
+	const das = parseInt(CTRLS[11], 10);
+	if (Number.isFinite(das)) DAS = das;
+	const arr = parseInt(CTRLS[12], 10);
+	if (Number.isFinite(arr)) ARR = arr;
+	const sdr = parseInt(CTRLS[13], 10);
+	if (Number.isFinite(sdr)) SDR = sdr;
+	const cell = parseInt(CTRLS[14], 10);
+	if (Number.isFinite(cell)) setCellSize(cell);
+	const audio = parseInt(CTRLS[15], 10);
+	if (Number.isFinite(audio)) audiolevel = audio;
+}
+
+window.addEventListener('storage', (event) => {
+	if (event.key === 'config' || event.key === 'version' || event.key === null) {
+		applyStoredConfig();
+	}
+});
+
 const enginePieceToChar = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 const charToEnginePiece = {
 	I: 0,
@@ -4110,6 +4189,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			y: yPOS,
 			rot,
 			cleared,
+			garbageCleared: garbageLinesCleared,
 			tspin,
 			mini,
 			allspinMini,
@@ -4249,12 +4329,16 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 
 		clearedIndexes = [];
+		garbageLinesCleared = 0;
 		let permanentLinesCleared = 0;
 
 		board = board.filter((r, i) => {
 			let isFull = r.every((c) => c.t == 1);
 			if (isFull) {
 				clearedIndexes.push(i);
+				if (r.some(c => c.c === 'X')) {
+					garbageLinesCleared++;
+				}
 				if (r.some(c => c.permanent)) {
 					permanentLinesCleared++;
 				}

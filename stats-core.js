@@ -289,6 +289,7 @@
 			maxCombo: 0,
 			maxB2B: 0,
 			garbageReceived: 0,
+			garbageCleared: 0,
 			currentInputs: 0,
 			currentPiece: '',
 			softDropExempt: false,
@@ -307,6 +308,7 @@
 
 		const cleared = Math.max(0, Math.min(4, Math.floor(info.cleared || 0)));
 		state.lines += cleared;
+		state.garbageCleared += Math.max(0, Math.floor(Number(info.garbageCleared) || 0));
 		if (cleared === 1) state.singles += 1;
 		else if (cleared === 2) state.doubles += 1;
 		else if (cleared === 3) state.triples += 1;
@@ -422,11 +424,48 @@
 			case 'apm':
 				return minutes > 0 ? attack / minutes : 0;
 			case 'vs':
-				return seconds > 0 ? (attack * 100) / seconds : 0;
+				// TETR.IO's VS counts both attack and garbage lines cleared.
+				return seconds > 0 ? ((attack + state.garbageCleared) * 100) / seconds : 0;
 			case 'app':
 				return pieces > 0 ? attack / pieces : 0;
+			case 'garbageSent':
+				return attack;
 			case 'garbageReceived':
 				return state.garbageReceived;
+			case 'garbageCleared':
+				return state.garbageCleared;
+			case 'downstackPerSecond':
+				return seconds > 0 ? state.garbageCleared / seconds : 0;
+			case 'downstackPerPiece':
+				return pieces > 0 ? state.garbageCleared / pieces : 0;
+			case 'garbageEfficiency': {
+				const pps = seconds > 0 ? pieces / seconds : 0;
+				const app = pieces > 0 ? attack / pieces : 0;
+				const dss = seconds > 0 ? state.garbageCleared / seconds : 0;
+				return pps > 0 ? ((app * dss) / pps) * 2 : 0;
+			}
+			case 'vsApm':
+				return attack > 0 ? (attack + state.garbageCleared) / (0.6 * attack) : null;
+			case 'appDsP': {
+				const app = pieces > 0 ? attack / pieces : 0;
+				const dsp = pieces > 0 ? state.garbageCleared / pieces : 0;
+				return app + dsp;
+			}
+			case 'cheeseIndex': {
+				const app = pieces > 0 ? attack / pieces : 0;
+				const dsp = pieces > 0 ? state.garbageCleared / pieces : 0;
+				const vsApm = attack > 0 ? (attack + state.garbageCleared) / (0.6 * attack) : null;
+				if (vsApm === null) return null;
+				return dsp * 150 + (vsApm - 2) * 50 + (0.6 - app) * 125;
+			}
+			case 'wapp': {
+				const app = pieces > 0 ? attack / pieces : 0;
+				const dsp = pieces > 0 ? state.garbageCleared / pieces : 0;
+				const vsApm = attack > 0 ? (attack + state.garbageCleared) / (0.6 * attack) : null;
+				if (vsApm === null) return null;
+				const cheese = dsp * 150 + (vsApm - 2) * 50 + (0.6 - app) * 125;
+				return app - 5 * Math.tan(((cheese / -30) + 1) * Math.PI / 180);
+			}
 			case 'finesse':
 				return pieces > 0 ? (state.perfectPieces / pieces) * 100 : null;
 			case 'finesseFaults':
@@ -487,6 +526,16 @@
 				return lines > 0 ? pieces / lines : 0;
 			case 'holdsPerPiece':
 				return pieces > 0 ? state.holds / pieces : 0;
+			case 'area': {
+				const apm = minutes > 0 ? attack / minutes : 0;
+				const pps = seconds > 0 ? pieces / seconds : 0;
+				const vs = seconds > 0 ? ((attack + state.garbageCleared) * 100) / seconds : 0;
+				const app = pieces > 0 ? attack / pieces : 0;
+				const dss = seconds > 0 ? state.garbageCleared / seconds : 0;
+				const dsp = pieces > 0 ? state.garbageCleared / pieces : 0;
+				const gbe = pps > 0 ? ((app * dss) / pps) * 2 : 0;
+				return apm * 1 + pps * 45 + vs * 0.444 + app * 185 + dss * 175 + dsp * 450 + gbe * 315;
+			}
 			default:
 				return null;
 		}

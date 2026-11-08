@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-v20';
+	const SW_CACHE_VERSION = 'zztetris-mobile-v21';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -680,7 +680,17 @@
 			lpm: 'LPM',
 			kpp: 'KPP',
 			app: 'APP',
-			garbageReceived: 'GBG',
+			garbageSent: 'GST',
+			garbageReceived: 'GRC',
+			garbageCleared: 'GCL',
+			downstackPerSecond: 'DS/S',
+			downstackPerPiece: 'DS/P',
+			garbageEfficiency: 'GbE',
+			cheeseIndex: 'CHS',
+			vsApm: 'VS/A',
+			appDsP: 'A+DS',
+			wapp: 'wAPP',
+			area: 'AREA',
 			surge: 'SRG',
 			finesseFaults: 'FLT',
 			faultsPerPiece: 'F/P',

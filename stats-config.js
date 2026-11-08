@@ -31,8 +31,19 @@
 		{ id: 'apm', label: 'APM', group: 'Attack', format: 'float2' },
 		{ id: 'vs', label: 'VS', group: 'Attack', format: 'float2' },
 		{ id: 'app', label: 'APP', group: 'Attack', format: 'float2' },
-		{ id: 'garbageReceived', label: 'Garbage', group: 'Attack', format: 'int' },
 		{ id: 'surge', label: 'Surge', group: 'Attack', format: 'int' },
+
+		// TETR.IO / Tetra Stats garbage and downstack metrics.
+		{ id: 'garbageSent', label: 'Garbage Sent', group: 'Garbage', format: 'int' },
+		{ id: 'garbageReceived', label: 'Garbage Received', group: 'Garbage', format: 'int' },
+		{ id: 'garbageCleared', label: 'Garbage Cleared', group: 'Garbage', format: 'int' },
+		{ id: 'downstackPerSecond', label: 'DS/S (Downstack/sec)', group: 'Garbage', format: 'float2' },
+		{ id: 'downstackPerPiece', label: 'DS/P (Downstack/piece)', group: 'Garbage', format: 'float2' },
+		{ id: 'garbageEfficiency', label: 'GbE (Garbage Eff.)', group: 'Garbage', format: 'float2' },
+		{ id: 'cheeseIndex', label: 'Cheese Index', group: 'Garbage', format: 'float2' },
+		{ id: 'vsApm', label: 'VS/APM', group: 'Garbage', format: 'float2' },
+		{ id: 'appDsP', label: 'APP + DS/P', group: 'Garbage', format: 'float2' },
+		{ id: 'wapp', label: 'wAPP', group: 'Garbage', format: 'float2' },
 
 		{ id: 'finesse', label: 'Finesse', group: 'Finesse', format: 'percent2' },
 		{ id: 'finesseFaults', label: 'Faults', group: 'Finesse', format: 'int' },
@@ -64,6 +75,7 @@
 		{ id: 'clearEfficiency', label: 'Lines/Piece', group: 'Efficiency', format: 'float2' },
 		{ id: 'piecesPerLine', label: 'Pieces/Line', group: 'Efficiency', format: 'float2' },
 		{ id: 'holdsPerPiece', label: 'Holds/Piece', group: 'Efficiency', format: 'float2' },
+		{ id: 'area', label: 'Area (Tetra Stats)', group: 'Efficiency', format: 'float2' },
 	];
 
 	const DEFAULT_VISIBLE = [
