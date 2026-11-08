@@ -4466,7 +4466,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			y.map((x, ii) => {
 				if (x.t !== 0) {
 					drawCell(ii + 1, i - hiddenRows + 2, x.c, x.t);
-				} else if (i <= spawn[1] + 2) {
+				} else if (i < spawn[1] + 2) {
 					// render the top 2 rows as grey
 					drawCell(ii + 1, i - hiddenRows + 2, 'A', 1);
 				}
