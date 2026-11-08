@@ -282,7 +282,7 @@ var pattern = ctx.createPattern(gridCvs, 'repeat');
 // the page. The settings popup writes LS.config on every change, so the game
 // can pick them up live and keep the current board and session intact.
 function setCellSize(size) {
-	const next = Math.max(3, Math.min(100, parseInt(size, 10) || 20));
+	const next = Math.max(3, parseInt(size, 10) || 20);
 	if (next === cellSize) return;
 	cellSize = next;
 	const canvas = document.getElementById('b');
