@@ -1037,8 +1037,7 @@
 			'<div class="zzSheetRow"><label>Button size</label><input type="range" id="zzBtnSize" min="44" max="96" step="1"><input type="number" class="zzNum" id="zzBtnSizeNum" min="44" max="96" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Opacity</label><input type="range" id="zzBtnOpacity" min="20" max="100" step="1"><input type="number" class="zzNum" id="zzBtnOpacityNum" min="20" max="100" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Haptics</label><input type="checkbox" id="zzHaptics"></div>' +
-			'<button class="zzSheetBtn" id="zzEditLayout">Edit button layout</button>' +
-			'<div class="zzMapCard" id="zzButtonMap"></div>' +
+			'<button class="zzSheetBtn" id="zzEditLayout">Edit layout (buttons)</button>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="app">' +
 			'<button class="zzSheetBtn" id="zzInstallBtn" hidden>Install app</button>' +
@@ -1423,7 +1422,6 @@
 			config.landscape.haptics = haptics.checked;
 			saveConfig();
 		});
-		buildButtonMap();
 	}
 
 	function applyPreset(name) {
@@ -1433,40 +1431,6 @@
 		}
 		saveConfig();
 		rebuildLandscapeButtons();
-		buildButtonMap();
-	}
-
-	function buildButtonMap() {
-		const container = $('zzButtonMap');
-		if (!container) return;
-		container.innerHTML = '<h4>Buttons</h4>';
-		for (const button of config.landscape.buttons) {
-			const row = document.createElement('div');
-			row.className = 'zzMapRow';
-			const name = document.createElement('label');
-			name.textContent = button.id;
-			const select = document.createElement('select');
-			for (const option of ACTIONS) {
-				const item = document.createElement('option');
-				item.value = option.value;
-				item.textContent = option.label;
-				select.appendChild(item);
-			}
-			select.value = button.action;
-			select.addEventListener('change', () => {
-				button.action = select.value;
-				button.icon = ACTION_ICONS[button.action] || button.icon;
-				button.hold = HOLD_ACTIONS.has(button.action);
-				config.landscape.preset = 'custom';
-				const preset = $('zzLandscapePreset');
-				if (preset) preset.value = 'custom';
-				saveConfig();
-				rebuildLandscapeButtons();
-			});
-			row.appendChild(name);
-			row.appendChild(select);
-			container.appendChild(row);
-		}
 	}
 
 	function setupLandscapeInputMode() {
@@ -1486,6 +1450,8 @@
 		button.addEventListener('click', openLayoutEditor);
 	}
 
+	let layoutSelected = null;
+
 	function buildLayoutEditor() {
 		const overlay = document.createElement('div');
 		overlay.id = 'zzLayoutEditor';
@@ -1497,9 +1463,33 @@
 			'<button class="zzSheetBtn" id="zzLayoutAdd">Add button</button>' +
 			'<button class="zzSheetBtn" id="zzLayoutReset">Reset</button>' +
 			'</div>' +
+			'<div class="zzLayoutActionBar">' +
+			'<label for="zzLayoutAction">Action</label>' +
+			'<select id="zzLayoutAction"></select>' +
+			'<span class="zzLayoutSelection" id="zzLayoutSelection">No button selected</span>' +
+			'</div>' +
 			'<div id="zzLayoutCanvas"></div>' +
-			'<p class="zzHint zzLayoutHint">Drag buttons to move them. Tap × to delete.</p>';
+			'<p class="zzHint zzLayoutHint">Landscape layout: drag to move, tap to edit the action, × to delete.</p>';
 		document.body.appendChild(overlay);
+		const actionSelect = $('zzLayoutAction');
+		for (const option of ACTIONS) {
+			const item = document.createElement('option');
+			item.value = option.value;
+			item.textContent = option.label;
+			actionSelect.appendChild(item);
+		}
+		actionSelect.addEventListener('change', () => {
+			if (!layoutSelected) return;
+			layoutSelected.action = actionSelect.value;
+			layoutSelected.icon = ACTION_ICONS[actionSelect.value] || 's-plus';
+			layoutSelected.hold = HOLD_ACTIONS.has(actionSelect.value);
+			config.landscape.preset = 'custom';
+			const preset = $('zzLandscapePreset');
+			if (preset) preset.value = 'custom';
+			saveConfig();
+			rebuildLandscapeButtons();
+			rebuildLayoutEditor();
+		});
 		$('zzLayoutDone').addEventListener('click', closeLayoutEditor);
 		$('zzLayoutAdd').addEventListener('click', addLayoutButton);
 		$('zzLayoutReset').addEventListener('click', resetLayout);
@@ -1508,6 +1498,7 @@
 	function openLayoutEditor() {
 		setPaused(true);
 		hide('zzSettingsSheet');
+		layoutSelected = config.landscape.buttons[0] || null;
 		rebuildLayoutEditor();
 		show('zzLayoutEditor');
 	}
@@ -1517,7 +1508,6 @@
 		show('zzSettingsSheet');
 		saveConfig();
 		rebuildLandscapeButtons();
-		buildButtonMap();
 	}
 
 	function rebuildLayoutEditor() {
@@ -1527,12 +1517,23 @@
 		for (const button of config.landscape.buttons) {
 			canvas.appendChild(makeEditorButton(button));
 		}
+		const actionSelect = $('zzLayoutAction');
+		const selection = $('zzLayoutSelection');
+		if (actionSelect) {
+			actionSelect.disabled = !layoutSelected;
+			actionSelect.value = layoutSelected ? layoutSelected.action : '';
+		}
+		if (selection) {
+			selection.textContent = layoutSelected ? layoutSelected.id : 'No button selected';
+		}
 	}
 
 	function makeEditorButton(button) {
 		const element = document.createElement('button');
 		element.type = 'button';
-		element.className = 'zzBtn zzBtn--free zzBtn--edit';
+		element.className =
+			'zzBtn zzBtn--free zzBtn--edit' + (layoutSelected === button ? ' zz-selected' : '');
+		element.dataset.buttonId = button.id;
 		element.style.left = (button.x || 50) + '%';
 		element.style.top = (button.y || 50) + '%';
 		element.innerHTML =
@@ -1559,13 +1560,18 @@
 				startY: event.clientY,
 				x: button.x || 50,
 				y: button.y || 50,
+				moved: false,
 			};
 		});
 		element.addEventListener('pointermove', (event) => {
 			if (!drag || drag.id !== event.pointerId) return;
 			event.preventDefault();
-			const dx = ((event.clientX - drag.startX) / window.innerWidth) * 100;
-			const dy = ((event.clientY - drag.startY) / window.innerHeight) * 100;
+			const dxPx = event.clientX - drag.startX;
+			const dyPx = event.clientY - drag.startY;
+			if (!drag.moved && Math.abs(dxPx) + Math.abs(dyPx) < 4) return;
+			drag.moved = true;
+			const dx = (dxPx / window.innerWidth) * 100;
+			const dy = (dyPx / window.innerHeight) * 100;
 			button.x = Math.min(97, Math.max(3, drag.x + dx));
 			button.y = Math.min(97, Math.max(3, drag.y + dy));
 			element.style.left = button.x + '%';
@@ -1573,46 +1579,61 @@
 		});
 		const end = (event) => {
 			if (!drag || drag.id !== event.pointerId) return;
+			const moved = drag.moved;
 			drag = null;
-			saveConfig();
+			if (moved) {
+				saveConfig();
+			} else {
+				layoutSelected = button;
+				rebuildLayoutEditor();
+			}
 		};
 		element.addEventListener('pointerup', end);
 		element.addEventListener('pointercancel', end);
 		element.querySelector('.zzDeleteBadge').addEventListener('click', (event) => {
 			event.stopPropagation();
 			const index = config.landscape.buttons.indexOf(button);
-			if (index >= 0) config.landscape.buttons.splice(index, 1);
+			if (index < 0) return;
+			if (layoutSelected === button) {
+				layoutSelected =
+					config.landscape.buttons[index + 1] ||
+					config.landscape.buttons[index - 1] ||
+					null;
+			}
+			config.landscape.buttons.splice(index, 1);
 			config.landscape.preset = 'custom';
 			saveConfig();
 			rebuildLayoutEditor();
-			buildButtonMap();
+			rebuildLandscapeButtons();
 		});
 		return element;
 	}
 
 	function addLayoutButton() {
-		config.landscape.buttons.push({
+		const button = {
 			id: 'CUSTOM' + Date.now(),
 			x: 50,
 			y: 50,
 			action: '',
 			icon: 's-plus',
 			hold: false,
-		});
+		};
+		config.landscape.buttons.push(button);
 		config.landscape.preset = 'custom';
+		layoutSelected = button;
 		saveConfig();
 		rebuildLayoutEditor();
-		buildButtonMap();
 	}
 
 	function resetLayout() {
 		config.landscape.buttons = defaultLandscapeButtons('techmino');
 		config.landscape.preset = 'techmino';
+		layoutSelected = config.landscape.buttons[0] || null;
 		const preset = $('zzLandscapePreset');
 		if (preset) preset.value = 'techmino';
 		saveConfig();
 		rebuildLayoutEditor();
-		buildButtonMap();
+		rebuildLandscapeButtons();
 	}
 
 	function setupDisplay() {
