@@ -24,6 +24,12 @@
 		return document.getElementById(id);
 	}
 
+	// Replay practice defaults to free hold. The replay's hold lock is only
+	// applied when the user opts in, so they can hold the captured piece.
+	function lockHoldEnabled() {
+		return !!$('replayLockHold')?.checked;
+	}
+
 	function loadFromSession() {
 		const params = new URLSearchParams(location.search);
 		if (params.get('replayPractice') !== '1') return false;
@@ -81,7 +87,7 @@
 		queue = convertQueue(engine.queue.raw());
 		holdP = engine.held ? engine.held.toUpperCase() : '';
 		held = false;
-		replayHoldLocked = !!engine.holdLocked;
+		replayHoldLocked = !!engine.holdLocked && lockHoldEnabled();
 
 		combo = Number(engine.stats.combo);
 		b2b = Math.max(0, Number(engine.stats.b2b));
@@ -236,6 +242,8 @@
 		board = JSON.parse(initial.board);
 		queue = JSON.parse(initial.queue);
 		holdP = initial.holdP;
+		held = false;
+		replayHoldLocked = !!engine.holdLocked && lockHoldEnabled();
 		piece = initial.piece;
 		xPOS = initial.xPOS;
 		yPOS = initial.yPOS;
@@ -382,6 +390,13 @@
 				} else if (typeof applyStoredConfig === 'function') {
 					applyStoredConfig();
 				}
+			});
+		}
+		const lockHold = $('replayLockHold');
+		if (lockHold) {
+			lockHold.addEventListener('change', () => {
+				if (!active) return;
+				replayHoldLocked = lockHold.checked && !!engine.holdLocked;
 			});
 		}
 	}

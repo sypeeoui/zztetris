@@ -678,11 +678,20 @@ footer {
 	line-height: 1.3;
 }
 
+/* The panel is only for replay practice; the hidden attribute must win over
+   the flex display above. */
+.replay-practice-status[hidden] {
+	display: none;
+}
+
 .replay-practice-status .button {
+	box-sizing: border-box;
 	font-size: 10px;
 	padding: 4px;
 	margin: 0;
 	width: 100%;
+	white-space: normal;
+	line-height: 1.2;
 }
 
 .replay-practice-handling {

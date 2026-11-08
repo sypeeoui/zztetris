@@ -255,6 +255,12 @@ body {
 	white-space: nowrap;
 }
 
+/* .button:hover resets the margin, which would move the button out from
+   under the pointer. Keep it pinned to the right edge while hovering. */
+.replay-practice-btn:hover {
+	margin-left: auto;
+}
+
 .replay-player-body {
 	display: flex;
 	align-items: flex-start;
