@@ -1,0 +1,4 @@
+#!/bin/sh
+# Optional: enable with `git config core.hooksPath .githooks`.
+# Verifies that cache-busting versions are stamped; does not modify files.
+exec node scripts/stamp-assets.mjs --check
