@@ -24,6 +24,11 @@
 		}
 	})();
 
+	// Also put the SW cache version in the registration URL. The CDN caches
+	// sw.js by full URL for hours, so the pair must never be reused with new
+	// content. Keep this in sync with CACHE_VERSION in sw.js.
+	const SW_CACHE_VERSION = 'zztetris-mobile-v14';
+
 	const ACTIONS = [
 		{ value: '', label: 'None' },
 		{ value: 'L', label: 'Move Left' },
@@ -351,7 +356,13 @@
 	if (!params.get('nosw') && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
 		window.addEventListener('load', () => {
 			navigator.serviceWorker
-				.register('sw.js?v=' + encodeURIComponent(SHELL_VERSION), { updateViaCache: 'none' })
+				.register(
+					'sw.js?v=' +
+						encodeURIComponent(SHELL_VERSION) +
+						'&c=' +
+						encodeURIComponent(SW_CACHE_VERSION),
+					{ updateViaCache: 'none' }
+				)
 				.then((registration) => {
 					const check = () => registration.update().catch(() => {});
 					document.addEventListener('visibilitychange', () => {
