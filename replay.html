@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+		/>
+		<meta name="theme-color" content="#111111" />
+		<title>ZZTetris Replay Viewer</title>
+		<link rel="icon" href="./assets/pieceSprite/z.png" />
+		<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=51d10915" />
+		<link rel="stylesheet" type="text/css" href="styles/replay.css?v=d834b5d7" />
+	</head>
+	<body>
+		<header class="replay-header">
+			<a class="replay-back" href="index.html">← ZZTetris</a>
+			<h1>Replay Viewer</h1>
+			<div class="replay-header-actions">
+				<button id="loadReplayBtn" class="button" type="button">
+					Load replay
+				</button>
+				<button id="statsSettingsBtn" class="button" type="button">
+					Stats
+				</button>
+			</div>
+		</header>
+
+		<main class="replay-main">
+			<section id="dropZone" class="replay-dropzone">
+				<div class="replay-dropzone-inner">
+					<h2>Drop a TETR.IO match replay</h2>
+					<p>Supports <code>.ttrm</code> files from Quick Play, Tetra League and custom rooms.</p>
+					<div class="replay-dropzone-actions">
+						<button id="chooseFileBtn" class="button replay-primary" type="button">
+							Choose file
+						</button>
+						<button id="pasteReplayBtn" class="button" type="button">
+							Paste JSON
+						</button>
+					</div>
+					<p class="replay-hint">
+						Solo <code>.ttr</code> replays are not supported yet.
+					</p>
+					<div id="replayError" class="replay-error" hidden></div>
+				</div>
+				<input id="fileInput" type="file" accept=".ttrm,.json,application/json" hidden />
+			</section>
+
+			<section id="replayView" class="replay-view" hidden>
+				<div id="matchHeader" class="replay-match-header"></div>
+				<div id="roundTabs" class="replay-round-tabs"></div>
+				<div id="playerGrid" class="replay-player-grid"></div>
+				<div id="playbackBar" class="replay-playback">
+					<div class="replay-playback-row">
+						<button id="playPauseBtn" class="button replay-primary" type="button">
+							Play
+						</button>
+						<button id="stepBackSecBtn" class="button" type="button" title="Back 1 second">
+							−1s
+						</button>
+						<button id="stepBackBtn" class="button" type="button" title="Back 1 frame">
+							−1f
+						</button>
+						<button id="stepForwardBtn" class="button" type="button" title="Forward 1 frame">
+							+1f
+						</button>
+						<button id="stepForwardSecBtn" class="button" type="button" title="Forward 1 second">
+							+1s
+						</button>
+						<input id="seekSlider" class="replay-seek" type="range" min="0" max="0" value="0" step="1" />
+						<span id="timeDisplay" class="replay-time">0:00.000 / 0:00.000</span>
+						<select id="speedSelect" class="replay-select" title="Playback speed">
+							<option value="0.25">0.25×</option>
+							<option value="0.5">0.5×</option>
+							<option value="1" selected>1×</option>
+							<option value="2">2×</option>
+							<option value="4">4×</option>
+							<option value="8">8×</option>
+						</select>
+					</div>
+					<div class="replay-playback-row replay-playback-meta">
+						<span id="frameDisplay">Frame 0 / 0</span>
+						<span id="roundDisplay"></span>
+					</div>
+				</div>
+			</section>
+		</main>
+
+		<div id="statsSettings" class="replay-settings" hidden>
+			<div class="replay-settings-panel">
+				<div class="replay-settings-header">
+					<h2>Visible stats</h2>
+					<button id="statsCloseBtn" class="button" type="button">Close</button>
+				</div>
+				<label class="replay-settings-scope">
+					<span>Apply to</span>
+					<select id="statsScope" class="replay-select"></select>
+				</label>
+				<div id="statsCheckboxes" class="replay-settings-list"></div>
+				<div class="replay-settings-actions">
+					<button id="statsSelectAllBtn" class="button" type="button">Select all</button>
+					<button id="statsClearBtn" class="button" type="button">Clear</button>
+					<button id="statsResetBtn" class="button" type="button">Reset to game defaults</button>
+				</div>
+			</div>
+		</div>
+
+		<script src="rotationSystem.js"></script>
+		<script defer src="stats-config.js?v=09690ca8"></script>
+		<script defer src="stats-core.js?v=4c609439"></script>
+		<script defer src="replay-engine.js?v=db2dd99e"></script>
+		<script defer src="replay-common.js?v=bd5aa09d"></script>
+		<script defer src="replay.js?v=093c7a8f"></script>
+	</body>
+</html>

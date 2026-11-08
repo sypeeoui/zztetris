@@ -2,6 +2,8 @@ tetris-fumen
 
 .vscode
 
+node_modules/
+
 .DS_Store
 
 # WASM build artifacts

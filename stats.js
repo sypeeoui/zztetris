@@ -198,6 +198,7 @@
 		if (result.fault) playFinesseSound();
 		recordAttack(result.attack.total);
 		updatePanel();
+		return result.attack.total;
 	}
 
 	const TRANSIENT_STATE_KEYS = new Set([
@@ -222,12 +223,19 @@
 	function restore(saved) {
 		if (!saved) return;
 		for (const key of Object.keys(saved)) {
-			if (key in state) state[key] = saved[key];
+			state[key] = saved[key];
 		}
 		state.currentInputs = 0;
 		state.softDropExempt = false;
 		state.lastFinesseFault = false;
 		resetAttackDisplay();
+		updatePanel();
+	}
+
+	function restoreAttackDisplay(damage, spike) {
+		lastClearDamage = Math.max(0, Math.floor(Number(damage) || 0));
+		spikeValue = Math.max(0, Math.floor(Number(spike) || 0));
+		lastAttackAt = spikeValue > 0 ? Date.now() : 0;
 		updatePanel();
 	}
 
@@ -340,6 +348,7 @@
 		onRestart,
 		snapshot,
 		restore,
+		restoreAttackDisplay,
 		resetSession,
 		resetQueue,
 		resetQueueHold,

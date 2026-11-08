@@ -1,14 +1,14 @@
 const print = console.log;
 const LS = localStorage; // client side data storage
 // Bumped whenever the analyzer changes so the running build is visible.
-const ZZ_PC_BUILD = '2026-11-07T23:05';
+const ZZ_PC_BUILD = '2026-11-08T01:35';
 console.log('ZZTetris PC analyzer build', ZZ_PC_BUILD);
 
 function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=3', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=5015766d', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -245,6 +245,10 @@ var queue = [];
 var piece = '';
 var holdP = '';
 var held = false;
+var replayHoldLocked = false;
+// Gravity interval in ms. callback() seeds it from its argument; replay
+// practice can change it live through ZZReplayPractice.
+var zzGravityMs = 700;
 var Ldn = (Rdn = false);
 var rot = 0;
 var lastKick = 0;
@@ -454,7 +458,7 @@ const wasmHelper = {
 
 	async ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./engineWorker.js?v=8');
+		this.worker = new Worker('./engineWorker.js?v=3df45535');
 		this.worker.onmessage = (e) => {
 			const { type, result, error, requestId } = e.data;
 			if (type === 'result' || type === 'error') {
@@ -527,7 +531,7 @@ const gomenSolver = {
 				reject(err);
 			};
 			try {
-				this.worker = new Worker('./pc-solver/worker.js?v=3');
+				this.worker = new Worker('./pc-solver/worker.js?v=844e1b46');
 			} catch (err) {
 				fail(err);
 				return;
@@ -556,14 +560,14 @@ const gomenSolver = {
 		return this.ready;
 	},
 
-	async solve({ garbage, queue, hold, physics }) {
+	async solve({ garbage, queue, hold, physics, timeoutMs = 15000 }) {
 		await this.ensure();
 		const id = this.nextId++;
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.pending.delete(id);
 				reject(new Error('PC solver timed out'));
-			}, 15000);
+			}, timeoutMs);
 			this.pending.set(id, {
 				resolve: (data) => {
 					clearTimeout(timer);
@@ -994,6 +998,7 @@ function clearActive() {
 }
 
 function newPiece() {
+	replayHoldLocked = false;
 	while (queue.length < 10) {
 		var shuf = names.shuffle();
 		shuf.map((p) => queue.push(p));
@@ -1131,6 +1136,13 @@ function boardRowsForEngine() {
 function queueForEngine(maxLen = 14) {
 	const clean = queue.filter((p) => p != '|').slice(0, maxLen);
 	return clean.map((p) => charToEnginePiece[p]).filter((v) => v !== undefined);
+}
+
+function queueForEngineSearch() {
+	// The PC search only needs the current bag remainder and the next bag.
+	// Passing the full preview makes the DFS try much deeper queues and can
+	// blow the time budget before it reaches the actual PC line.
+	return queueForEngine(isPcModeEnabled() ? 10 : 14);
 }
 
 function getEvaluationStateHash() {
@@ -1849,7 +1861,9 @@ function applyPcSetup(route) {
 	let sinceSep = 0;
 	for (let i = queue.length - 1; i >= 0 && queue[i] !== '|'; i--) sinceSep++;
 	if (sinceSep === 7) queue.push('|');
-	while (queue.length < 10) {
+	// Keep two full bags after the setup so the engine's PC line and the
+	// pieces the game will actually deal come from the same queue.
+	while (queue.length < 17) {
 		for (const p of names.shuffle()) queue.push(p);
 		queue.push('|');
 	}
@@ -1930,7 +1944,7 @@ async function gomenPcCount() {
 	if (piece) playQueue.push(piece);
 	for (const p of queue) playQueue.push(p);
 	const { spec } = pcSetupGomenQueueSpec(playQueue);
-	const data = await gomenSolver.solve({ garbage, queue: spec, hold: true });
+	const data = await gomenSolver.solve({ garbage, queue: spec, hold: true, timeoutMs: 5000 });
 	return data.count || 0;
 }
 
@@ -2655,6 +2669,14 @@ async function filterRoutesByReachability(apiBase, rows, routes, mode) {
 	return { routes: filtered, failedChecks, relaxed: false };
 }
 
+function updateRouteSelectionClasses() {
+	const listEl = getEvalElement('evalRoutesList');
+	if (!listEl) return;
+	listEl.querySelectorAll('.eval-route-item').forEach((item) => {
+		item.classList.toggle('eval-route-item--active', item.dataset.routeKey == evalState.selectedRouteKey);
+	});
+}
+
 function renderRoutesList() {
 	const listEl = getEvalElement('evalRoutesList');
 	if (!listEl) return;
@@ -2669,13 +2691,8 @@ function renderRoutesList() {
 		return;
 	}
 
-	const preferredKey = preferredRouteKeyForMode(routes);
-	if (preferredKey && evalState.selectedRouteKey != preferredKey) {
-		evalState.selectedRouteKey = preferredKey;
-	}
-
 	if (!routes.some((r) => r.key == evalState.selectedRouteKey)) {
-		evalState.selectedRouteKey = preferredKey || routes[0].key;
+		evalState.selectedRouteKey = preferredRouteKeyForMode(routes) || routes[0].key;
 	}
 
 	routes.forEach((route) => {
@@ -2705,27 +2722,29 @@ function renderRoutesList() {
 		});
 
 		item.addEventListener('click', () => {
-			if (route.setup) armPcSetupPlan(route);
-			else clearPcSetupPlan();
-			setRouteFollowModeFromSelection(route.key);
-			evalState.selectedRouteKey = preferredRouteKeyForMode(routes);
-			evalState.hoverRouteKey = evalState.selectedRouteKey;
-			renderRoutesList();
+			if (route.setup) {
+				armPcSetupPlan(route);
+			} else {
+				clearPcSetupPlan();
+				setRouteFollowModeFromSelection(route.key);
+			}
+			evalState.selectedRouteKey = route.key;
+			evalState.hoverRouteKey = route.key;
+			updateRouteSelectionClasses();
 			rebuildEvaluationOverlay();
 		});
 
 		item.addEventListener('dblclick', () => {
-			setRouteFollowModeFromSelection(route.key);
-			evalState.selectedRouteKey = preferredRouteKeyForMode(routes);
-			evalState.hoverRouteKey = evalState.selectedRouteKey;
-			renderRoutesList();
-			rebuildEvaluationOverlay();
-			const selectedRoute = routes.find((r) => r.key == evalState.selectedRouteKey) || route;
-			if (selectedRoute.setup) {
-				applyPcSetup(selectedRoute);
-			} else {
-				playRoute(selectedRoute);
+			if (route.setup) {
+				applyPcSetup(route);
+				return;
 			}
+			setRouteFollowModeFromSelection(route.key);
+			evalState.selectedRouteKey = route.key;
+			evalState.hoverRouteKey = route.key;
+			updateRouteSelectionClasses();
+			rebuildEvaluationOverlay();
+			playRoute(route);
 		});
 
 		listEl.appendChild(item);
@@ -2830,8 +2849,18 @@ function rebuildEvaluationOverlay() {
 				updateEvaluationText();
 				return;
 			}
+			if (evalState.pcSetupPlan.pcMovesLoaded) {
+				evalState.pcSetupPlan = null;
+			} else {
+				// The setup is complete but the engine has not appended the
+				// PC line yet. Keep the plan and wait for the analysis.
+				evalState.overlayCells = [];
+				updateEvaluationText();
+				return;
+			}
+		} else {
+			evalState.pcSetupPlan = null;
 		}
-		evalState.pcSetupPlan = null;
 	}
 
 	const data = evalState.latestData;
@@ -2866,6 +2895,10 @@ async function analyzeWithEngine(forceRefresh = false) {
 		return;
 	}
 
+	// A setup can be applied while the empty-board lookup is still running.
+	// Ignore that older result instead of overwriting the applied route.
+	const generation = evalState.analysisGeneration;
+
 	// PC mode gets much faster once the precomputed legal-board database is
 	// loaded, so kick the (lazy, one-time) fetch off on first use.
 	if (isPcModeEnabled()) ensureLegalBoardsLoaded();
@@ -2880,8 +2913,14 @@ async function analyzeWithEngine(forceRefresh = false) {
 				updateEvaluationText();
 				return;
 			}
+			// The setup is complete but the engine has not appended the PC
+			// line yet. Keep the plan so this analysis can extend it.
+			if (evalState.pcSetupPlan.pcMovesLoaded) {
+				evalState.pcSetupPlan = null;
+			}
+		} else {
+			evalState.pcSetupPlan = null;
 		}
-		evalState.pcSetupPlan = null;
 	}
 
 	const useWasm = !!getEvalElement('evalUseWasm')?.checked;
@@ -2917,6 +2956,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 		gomenSolver.ensure().catch(() => {});
 		try {
 			await loadPcSetupData();
+			if (generation !== evalState.analysisGeneration) return;
 			const bagPieces = currentBagPieces();
 			const pcCount = pcSetupCountForBag(bagPieces);
 			let result = buildPcSetupRoutes(pcCount);
@@ -2937,6 +2977,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 				usedCount = null;
 			}
 
+			if (generation !== evalState.analysisGeneration) return;
 			const routes = result.routes;
 			evalState.latestData = {
 				raw: { pc_setups: true },
@@ -2962,6 +3003,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 					`PC setup list: ${routes.length} option(s) for ${where}, ${bagPieces.length} piece(s) left in bag. Checking which setups reach a PC...`
 				);
 				const { anyVerified, anyChecked } = await verifyPcSetupRoutes(routes);
+				if (generation !== evalState.analysisGeneration) return;
 				if (anyChecked && !anyVerified) {
 					// No setup clears immediately. Keep the same fields but mark
 					// them as 4-line PC continuations instead of dead ends.
@@ -2980,6 +3022,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 				rebuildEvaluationOverlay();
 			}
 		} catch (error) {
+			if (generation !== evalState.analysisGeneration) return;
 			evalState.overlayCells = [];
 			evalState.latestData = null;
 			renderRoutesList();
@@ -3010,7 +3053,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 		let data;
 		if (useWasm) {
 			const holdId = holdP ? charToEnginePiece[holdP] : null;
-			const queueIds = queueForEngine();
+			const queueIds = queueForEngineSearch();
 			data = await wasmHelper.findBestMove(engineType, {
 				rows,
 				pieceId,
@@ -3027,10 +3070,10 @@ async function analyzeWithEngine(forceRefresh = false) {
 				if (isPcModeEnabled()) {
 					try {
 						const count = await gomenPcCount();
+						if (generation !== evalState.analysisGeneration) return;
 						if (count > 0) {
-							evalState.latestData = null;
-							renderRoutesList();
-							rebuildEvaluationOverlay();
+							// Keep the setup route visible; the engine just
+							// needs a larger budget to produce the move line.
 							setEvalStatus(
 								`PC available (${count} line(s)) but the engine could not produce a move line within the budget. Increase the time budget or use the PC preset.`
 							);
@@ -3046,7 +3089,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 			const payload = {
 				board_rows: rows,
 				current_piece: pieceId,
-				queue: queueForEngine(),
+				queue: queueForEngineSearch(),
 				hold: holdP ? charToEnginePiece[holdP] : null,
 				b2b: sentB2b,
 				combo: sentCombo,
@@ -3079,16 +3122,32 @@ async function analyzeWithEngine(forceRefresh = false) {
 			data = await res.json();
 		}
 
+		if (generation !== evalState.analysisGeneration) return;
+
 		const rawRoutes = buildEvaluationRoutes(data);
 		const holdId = holdP ? charToEnginePiece[holdP] : null;
-		const queueIds = queueForEngine();
+		const queueIds = queueForEngineSearch();
 		const nextQueuePieceId = queueIds.length ? queueIds[0] : null;
 		const contextRoutes = rawRoutes.filter((route) => {
 			const check = validateRoutePieceContext(route, pieceId, holdId, nextQueuePieceId);
 			return check.ok;
 		});
 		const filtered = await filterRoutesByReachability(apiBase, rows, contextRoutes, evalState.reachabilityMode);
+		if (generation !== evalState.analysisGeneration) return;
 		const finalRoutes = filtered.routes;
+
+		// The engine just found the PC line for the setup board. Append it to
+		// the armed plan so the overlay keeps following the route as the
+		// player places the remaining pieces instead of re-searching.
+		if (evalState.pcSetupPlan && !evalState.pcSetupPlan.pcMovesLoaded) {
+			const pcRoute = finalRoutes.find((route) => route.moves?.length);
+			if (pcRoute && pcSetupPlanMatchesBoard(evalState.pcSetupPlan)) {
+				const pcMoves = (pcRoute.orderedMoves || pcRoute.moves).slice();
+				evalState.pcSetupPlan.moves = [...evalState.pcSetupPlan.setupMoves, ...pcMoves];
+				evalState.pcSetupPlan.orderedMoves = [...evalState.pcSetupPlan.setupMoves, ...pcMoves];
+				evalState.pcSetupPlan.pcMovesLoaded = true;
+			}
+		}
 
 		evalState.latestData = {
 			raw: data,
@@ -3123,6 +3182,7 @@ async function analyzeWithEngine(forceRefresh = false) {
 			);
 		}
 	} catch (error) {
+		if (generation !== evalState.analysisGeneration) return;
 		evalState.overlayCells = [];
 		evalState.latestData = null;
 		renderRoutesList();
@@ -3953,77 +4013,85 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		actions: flags,
 	};
 
-	newPiece();
-	hist = [
-		{
-			board: JSON.stringify(board),
-			queue: JSON.stringify(queue),
-			hold: holdP,
-			piece: piece,
-			stats: window.ZZStats?.snapshot(),
-		},
-	];
-	histPos = 0;
-	combo = -1;
-    oldcombo = -1;
-    oldb2b = 0;
-	b2b = 0;
+	const replayLoaded = window.ZZReplayPractice?.loadFromSession();
+	if (!replayLoaded) {
+		newPiece();
+		hist = [
+			{
+				board: JSON.stringify(board),
+				queue: JSON.stringify(queue),
+				hold: holdP,
+				piece: piece,
+				stats: window.ZZStats?.snapshot(),
+			},
+		];
+		histPos = 0;
+		combo = -1;
+		oldcombo = -1;
+		oldb2b = 0;
+		b2b = 0;
+	}
 	syncEvalChainInputsFromGame();
 
     if (special_restart) {
         restart();
     }
 
-	fullQuery = window.location.search;
-	if (fullQuery.length > 0 && fullQuery[0] == '?') {
-		queries = fullQuery.slice(1).split('&');
-		for (let query of queries) {
-			if (query.length > 0) {
-				if (query.slice(0, 6) == 'fumen=') {
-					// waow lazy handling
-					fumen = query.slice(6);
-					try {
-						result = fullDecode(fumen, hist[0]);
-						hist = JSON.parse(JSON.stringify(result));
-						histPos = 0;
-						board = JSON.parse(hist[0]['board']);
-						queue = JSON.parse(hist[0]['queue']);
-						holdP = hist[0]['hold'];
-						piece = hist[0]['piece'];
-						xPOS = spawn[0];
-						yPOS = spawn[1];
-						rot = 0;
-						clearActive();
-						updateGhost();
-						setShape();
-						updateQueue();
-					} catch (error) {
-						console.log(error);
+	if (!replayLoaded) {
+		fullQuery = window.location.search;
+		if (fullQuery.length > 0 && fullQuery[0] == '?') {
+			queries = fullQuery.slice(1).split('&');
+			for (let query of queries) {
+				if (query.length > 0) {
+					if (query.slice(0, 6) == 'fumen=') {
+						// waow lazy handling
+						fumen = query.slice(6);
+						try {
+							result = fullDecode(fumen, hist[0]);
+							hist = JSON.parse(JSON.stringify(result));
+							histPos = 0;
+							board = JSON.parse(hist[0]['board']);
+							queue = JSON.parse(hist[0]['queue']);
+							holdP = hist[0]['hold'];
+							piece = hist[0]['piece'];
+							xPOS = spawn[0];
+							yPOS = spawn[1];
+							rot = 0;
+							clearActive();
+							updateGhost();
+							setShape();
+							updateQueue();
+						} catch (error) {
+							console.log(error);
+						}
 					}
-				}
-				if (query.slice(0, 4) == 'pos=') {
-					pos = parseInt(query.slice(4));
-					if (!isNaN(pos) && hist.length > pos) {
-						histPos = pos;
-                        board = JSON.parse(hist[pos]['board']);
-                        queue = JSON.parse(hist[pos]['queue']);
-						holdP = hist[pos]['hold'];
-						piece = hist[pos]['piece'];
-						POS = spawn[0];
-						yPOS = spawn[1];
-						rot = 0;
-						clearActive();
-						updateGhost();
-						setShape();
+					if (query.slice(0, 4) == 'pos=') {
+						pos = parseInt(query.slice(4));
+						if (!isNaN(pos) && hist.length > pos) {
+							histPos = pos;
+							board = JSON.parse(hist[pos]['board']);
+							queue = JSON.parse(hist[pos]['queue']);
+							holdP = hist[pos]['hold'];
+							piece = hist[pos]['piece'];
+							POS = spawn[0];
+							yPOS = spawn[1];
+							rot = 0;
+							clearActive();
+							updateGhost();
+							setShape();
+						}
 					}
 				}
 			}
 		}
 	}
 
-	setInterval(() => { //* gravity
+	zzGravityMs = gravity;
+	function gravityLoop() {
 		if (!zzPaused && document.getElementById('grav').checked) move('SD');
-	}, gravity);
+		setTimeout(gravityLoop, Math.max(0, zzGravityMs));
+	}
+	setTimeout(gravityLoop, Math.max(0, zzGravityMs));
 
 	function playSnd(sfx, overlap) {
 		const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
@@ -4140,7 +4208,6 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 					clearInterval(loop);
 				}
 			}, 0);
-			if (yPOS != yGHO) lastAction = 'SD';
 		}
 	}
 
@@ -4188,7 +4255,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		const b2bBefore = b2b;
 		const comboBefore = combo;
 		cleared = checkLines();
-		window.ZZStats?.onPlacement({
+		const attack = window.ZZStats?.onPlacement({
 			piece,
 			x: xPOS,
 			y: yPOS,
@@ -4207,6 +4274,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			lastKick,
 			lastRotationType,
 		});
+		window.ZZReplayPractice?.afterLock({ cleared, attack });
 		newPiece();
 
         if (cheese) {
@@ -4233,10 +4301,12 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	function hold() {
 		//if(held) return;
+		if (replayHoldLocked) return;
 		rot = 0;
 		xPOS = spawn[0];
 		yPOS = spawn[1];
 		held = true;
+		replayHoldLocked = true;
 		if (holdP) {
 			holdP = [piece, (piece = holdP)][0];
 		} else {
@@ -4662,12 +4732,15 @@ function initPresets() {
 			getEvalElement('evalPcMode').checked = true;
 			getEvalElement('evalPathDecay').value = 1.0;
 			getEvalElement('evalBoardWeight').value = 0;
+			// The client already passes the concrete post-setup queue; letting
+			// the engine extend it again only widens the PC search.
+			getEvalElement('evalExtendQueue').checked = false;
 			// PC search needs depth to cover the board/queue
 			getEvalElement('evalDepth').value = 20;
 			// The PC search is an explicit action, so it can afford a larger
-			// budget than live evaluation. Iterative deepening returns the
-			// smallest clear it can prove within this window.
-			getEvalElement('evalTimeBudgetMs').value = 1000;
+			// budget than live evaluation. Some setup boards need several
+			// seconds before the DFS proves the line.
+			getEvalElement('evalTimeBudgetMs').value = 5000;
 			}
  else if (val.startsWith('custom_')) {
 			const name = val.replace('custom_', '');

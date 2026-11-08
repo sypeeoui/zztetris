@@ -1,0 +1,11 @@
+{
+	"name": "zztetris",
+	"private": true,
+	"scripts": {
+		"build:replay-engine": "node scripts/build-replay-engine.mjs"
+	},
+	"devDependencies": {
+		"@haelp/teto": "4.2.8",
+		"esbuild": "^0.25.0"
+	}
+}

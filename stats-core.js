@@ -429,7 +429,7 @@
 			case 'app':
 				return pieces > 0 ? attack / pieces : 0;
 			case 'garbageSent':
-				return attack;
+				return state.garbageSent ?? attack;
 			case 'garbageReceived':
 				return state.garbageReceived;
 			case 'garbageCleared':

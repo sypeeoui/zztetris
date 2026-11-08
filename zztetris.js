@@ -2,6 +2,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const mode = urlParams.get('mode') || 'practice';
 
 function restart() {
+	if (window.ZZReplayPractice?.restart()) return;
 	if (board.length > 0 && board[board.length - 1].filter((c) => c.t != 1).length == boardSize[0]) {
 		// lazy check, will have false positives, but whatever
 		if (queue[6] == '|' && holdP == '') {

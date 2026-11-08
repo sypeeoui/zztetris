@@ -64,6 +64,27 @@ function garbage(column, amount = 1) {
 	updateGhost();
 }
 
+// Add garbage rows with a hole of `size` columns at `column`. Used by the
+// replay practice pending-garbage queue; unlike garbage(), it creates fresh
+// cell objects for every row.
+function addGarbageRows(column, amount = 1, size = 1) {
+	for (let i = 0; i < amount; i++) {
+		const row = [];
+		for (let c = 0; c < boardSize[0]; c++) {
+			row.push(
+				c >= column && c < column + size
+					? { t: 0, c: '' }
+					: { t: 1, c: 'X' }
+			);
+		}
+		board.shift();
+		board.push(row);
+	}
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	updateGhost();
+}
+
 function addPracticeGarbageUI() {
 	const layers = parseInt(document.getElementById('practiceLayers').value) || 1;
 	const messiness = parseInt(document.getElementById('practiceMessiness').value) || 0;

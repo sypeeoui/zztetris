@@ -3,19 +3,22 @@
 	<script src="assets/vendor/jquery.min.js"></script>
 	<script src="rotationSystem.js"></script>
 	<script src="io.js"></script>
-	<script src="utils.js?v=2"></script>
+	<script src="utils.js?v=3157d76e"></script>
 	<script src="tetris-fumen.js"></script>
-	<script defer src="stats-config.js?v=2"></script>
-	<script defer src="stats-core.js?v=2"></script>
-	<script defer src="base.js?v=32"></script>
+	<script defer src="stats-config.js?v=09690ca8"></script>
+	<script defer src="stats-core.js?v=4c609439"></script>
+	<script defer src="replay-engine.js?v=db2dd99e"></script>
+	<script defer src="replay-common.js?v=bd5aa09d"></script>
+	<script defer src="base.js?v=dd25bf6e"></script>
 	<script defer src="tetrio.js"></script>
-	<script defer src="zztetris.js?v=2"></script>
-	<script defer src="stats.js?v=5"></script>
-	<script defer src="mobile.js?v=24"></script>
+	<script defer src="zztetris.js?v=7b5dd094"></script>
+	<script defer src="stats.js?v=7f77366f"></script>
+	<script defer src="replay-practice.js?v=de7e8388"></script>
+	<script defer src="mobile.js?v=3b09dfac"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=9" />
-	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=9" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=51d10915" />
+	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=75f7bf3e" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
 	<link rel="stylesheet" type="text/css" href="styles/board_settings.css" />
@@ -66,6 +69,7 @@
 				<a class="button" href="index.html?mobile=1">Mobile Mode</a>
 				<button class="button" target="popup" onclick="ctrlsPopup()">Game Settings</button>
 				<a class="button" href="index.html">Practice</a>
+				<a class="button" href="replay.html">Replay Viewer</a>
 				<a class="button" href="index.html?mode=cheese">Cheese</a>
 				<a class="button" href="index.html?mode=4w">4W</a>
 				<a class="button" href="index.html?mode=4w4res">4W 4Res</a>
@@ -95,6 +99,19 @@
 			</div>
 
 			<div class="nav-section">
+				<h3>Practice Gravity</h3>
+				<div class="practice-row">
+					<label for="practiceGravityMultiplier">Speed</label>
+					<input type="range" id="practiceGravityMultiplier" min="0.1" max="10" step="0.1" value="1" />
+					<span id="practiceGravityValue">1×</span>
+				</div>
+				<div class="practice-row">
+					<label for="practiceGravityMs">Gravity (ms/row)</label>
+					<input type="number" id="practiceGravityMs" min="0" max="2000" step="10" value="700" />
+				</div>
+			</div>
+
+			<div class="nav-section">
 				<h3>Export To</h3>
 				<button class="button" onclick="this.blur(); exportFumen()">Fumen</button>
 				<button class="button" onclick="this.blur(); exportFullFumen()">Full Fumen</button>
@@ -121,6 +138,15 @@
 
 				<div class="session-panel" id="sessionPanel">
 					<div class="session-header">SESSION</div>
+					<div id="replayPracticeStatus" class="replay-practice-status" hidden>
+						<span id="replayPracticeSource"></span>
+						<label class="replay-practice-handling">
+							<input type="checkbox" id="replayUseHandling" />
+							Use replay handling
+						</label>
+						<button class="button" id="replayPracticeResetBtn" type="button">Reset to replay state</button>
+						<a class="button" id="replayPracticeExitBtn" href="index.html">Exit replay practice</a>
+					</div>
 					<div class="session-chain">
 						<div class="session-chain-item">
 							<span class="session-chain-label">B2B</span>
@@ -151,6 +177,10 @@
 			</div>
 
 			<div class="board-wrap">
+				<div id="garbageMeter" class="garbage-meter" title="Pending garbage">
+					<div id="garbageMeterFill" class="garbage-meter-fill"></div>
+					<span id="garbageCount" class="garbage-meter-count">0</span>
+				</div>
 				<canvas id="b" width="200" height="400" style="padding: 18px"></canvas>
 			</div>
 
