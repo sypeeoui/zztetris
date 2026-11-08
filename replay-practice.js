@@ -158,6 +158,7 @@
 		clearActive();
 		updateGhost();
 		setShape();
+		window.ZZAutoLock?.onNewPiece();
 		updateQueue();
 		syncEvalChainInputsFromGame?.();
 		active = true;
@@ -287,6 +288,7 @@
 		clearActive();
 		updateGhost();
 		setShape();
+		window.ZZAutoLock?.onNewPiece();
 		updateQueue();
 		syncEvalChainInputsFromGame?.();
 		updateGravityControls();

@@ -1028,6 +1028,7 @@ function newPiece() {
 		lastKeys = keysDown;
 	}
 	window.ZZStats?.onNewPiece(piece);
+	window.ZZAutoLock?.onNewPiece();
 }
 
 function notify(text) {
@@ -1075,6 +1076,7 @@ function undo() {
 		updateQueue();
 		syncEvalChainInputsFromGame();
 		window.ZZStats?.onNewPiece(piece);
+		window.ZZAutoLock?.onNewPiece();
 		window.ZZStats?.restore(hist[histPos]['stats']);
 	}
 }
@@ -1096,6 +1098,7 @@ function redo() {
 		updateQueue();
 		syncEvalChainInputsFromGame();
 		window.ZZStats?.onNewPiece(piece);
+		window.ZZAutoLock?.onNewPiece();
 		window.ZZStats?.restore(hist[histPos]['stats']);
 	}
 }
@@ -3729,6 +3732,34 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	keysDown = 0;
 	lastKeys = 0;
 
+	// Hold-lock applies to every practice mode, not only replay practice.
+	// Unchecked means free hold: the held piece can be swapped repeatedly.
+	const holdLockCheckbox = document.getElementById('replayLockHold');
+	if (holdLockCheckbox) {
+		try {
+			const savedHoldLock = localStorage.getItem('zztetris_hold_lock_v1');
+			if (savedHoldLock !== null) {
+				holdLockCheckbox.checked = savedHoldLock === '1';
+			}
+		} catch (error) {
+			// Storage can be unavailable in private mode.
+		}
+		replayFreeHold = !holdLockCheckbox.checked;
+		if (replayFreeHold) replayHoldLocked = false;
+		holdLockCheckbox.addEventListener('change', () => {
+			replayFreeHold = !holdLockCheckbox.checked;
+			if (replayFreeHold) replayHoldLocked = false;
+			try {
+				localStorage.setItem(
+					'zztetris_hold_lock_v1',
+					holdLockCheckbox.checked ? '1' : '0'
+				);
+			} catch (error) {
+				// Storage can be unavailable in private mode.
+			}
+		});
+	}
+
 	document.getElementById('tc-un').addEventListener('touchstart', function (e) {
 		input = 'UNDO';
 		keysDown |= flags[input];
@@ -3902,6 +3933,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	// gestures and on-screen buttons get the same DAS/ARR/SDR behaviour.
 	function setPaused(value) {
 		zzPaused = !!value;
+		window.ZZAutoLock?.onPause(zzPaused);
 		if (zzPaused) {
 			keysDown = 0;
 			lastKeys = 0;
@@ -4096,7 +4128,8 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	zzGravityMs = gravity;
 	function gravityLoop() {
-		if (!zzPaused && document.getElementById('grav').checked) move('SD');
+		if (!zzPaused && document.getElementById('grav').checked) move('SD', true);
+		if (!zzPaused) window.ZZAutoLock?.onGravity();
 		setTimeout(gravityLoop, Math.max(0, zzGravityMs));
 	}
 	setTimeout(gravityLoop, Math.max(0, zzGravityMs));
@@ -4111,7 +4144,8 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 
-	function move(dir) {
+	function move(dir, fromGravity = false) {
+		let moved = false;
 		switch (dir) {
 			case 'L':
 				if (canMove(pieces[piece][rot], xPOS - 1, yPOS)) {
@@ -4123,6 +4157,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
 					playSnd('Move');
 					lastAction = 'L';
+					moved = true;
 				}
 				break;
 			case 'R':
@@ -4132,17 +4167,22 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
 					playSnd('Move');
 					lastAction = 'R';
+					moved = true;
 				}
 				break;
 			case 'SD':
 				if (canMove(pieces[piece][rot], xPOS, yPOS + 1)) {
 					yPOS++;
 					lastAction = 'SD';
+					moved = true;
 				}
 				break;
 		}
 		clearActive();
 		setShape();
+		// Gravity drives its own lock-state tick; a player move or soft drop
+		// refreshes the lock delay.
+		if (moved && !fromGravity) window.ZZAutoLock?.onMove();
 	}
 
 	function rotate(dir) {
@@ -4150,6 +4190,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		lastRotationType = dir === 'R180' ? 180 : 90;
 
 		var kickIndex = 0;
+		let rotated = false;
 		for (const kick of kicks[`${piece == 'I' ? 'I' : 'N'}${rot}-${newRot}`]) {
 			if (canMove(pieces[piece][newRot], xPOS + kick[0], yPOS - kick[1])) {
 				// Y is inverted lol
@@ -4159,6 +4200,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				lastKick = kickIndex;
 				playSnd('Rotate', true);
 				lastAction = 'ROT';
+				rotated = true;
 				break;
 			}
 			kickIndex++;
@@ -4167,6 +4209,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		clearActive();
 		updateGhost();
 		setShape();
+		if (rotated) window.ZZAutoLock?.onMove();
 	}
 
 	function arr(dir) {
@@ -4203,15 +4246,19 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			}, SDR);
 		} else {
 			// SDR is 0ms = instant SD
+			const beforeY = yPOS;
 			if (yPOS != yGHO) lastAction = 'SD';
 			yPOS = yGHO;
 			clearActive();
 			setShape();
+			if (yPOS !== beforeY) window.ZZAutoLock?.onMove();
 			let loop = setInterval(() => {
 				if (!zzPaused && keysDown & flags.SD) {
+					const loopBefore = yPOS;
 					yPOS = yGHO;
 					clearActive();
 					setShape();
+					if (yPOS !== loopBefore) window.ZZAutoLock?.onMove();
 				} else {
 					clearInterval(loop);
 				}
@@ -4252,14 +4299,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 	}
 
-	function hardDrop() {
-		if (yPOS != yGHO) lastAction = 'HD';
-		yPOS = yGHO;
-		held = false;
-		playSnd('HardDrop', true);
+	function lockPiece() {
+		window.ZZAutoLock?.onLock();
 		setShape(true);
 		clearActive();
-		
+
 		const b2bBefore = b2b;
 		const comboBefore = combo;
 		cleared = checkLines();
@@ -4307,6 +4351,16 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 		updateHistory();
 	}
+	// Used by the auto-lock module when a grounded piece's lock delay expires.
+	window.ZZLockPiece = lockPiece;
+
+	function hardDrop() {
+		if (yPOS != yGHO) lastAction = 'HD';
+		yPOS = yGHO;
+		held = false;
+		playSnd('HardDrop', true);
+		lockPiece();
+	}
 
 	function hold() {
 		//if(held) return;
@@ -4333,6 +4387,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		updateQueue();
 		lastAction = 'HOLD';
 		window.ZZStats?.onHold();
+		window.ZZAutoLock?.onNewPiece();
 	}
 
 	evalControlApi = {
@@ -4610,6 +4665,7 @@ function shuffleQueue() {
 	setShape();
 	updateHistory();
 	window.ZZStats?.onNewPiece(piece);
+	window.ZZAutoLock?.onNewPiece();
 }
 
 function shuffleQueuePlusHold() {
@@ -4641,6 +4697,7 @@ function shuffleQueuePlusHold() {
 	setShape();
 	updateHistory();
 	window.ZZStats?.onNewPiece(piece);
+	window.ZZAutoLock?.onNewPiece();
 }
 
 function updateKickTable() {

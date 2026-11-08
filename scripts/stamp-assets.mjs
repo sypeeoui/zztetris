@@ -34,6 +34,7 @@ const SCAN_FILES = [
 	'replay-practice.js',
 	'replay-common.js',
 	'attack-sim.js',
+	'auto-lock.js',
 ];
 
 // Match local file references such as `base.js?v=32` or `./wasm/x.wasm?v=4`.

@@ -9,13 +9,14 @@
 	<script defer src="stats-core.js?v=b55729b4"></script>
 	<script defer src="replay-engine.js?v=db2dd99e"></script>
 	<script defer src="replay-common.js?v=96c27288"></script>
-	<script defer src="base.js?v=7a3bceef"></script>
+	<script defer src="base.js?v=533f57a0"></script>
 	<script defer src="tetrio.js"></script>
 	<script defer src="zztetris.js?v=a0150133"></script>
 	<script defer src="stats.js?v=b9fb044d"></script>
 	<script defer src="attack-sim.js?v=1e004c5e"></script>
-	<script defer src="replay-practice.js?v=2a4d29fa"></script>
-	<script defer src="mobile.js?v=25f73a28"></script>
+	<script defer src="auto-lock.js?v=fdfaeb21"></script>
+	<script defer src="replay-practice.js?v=a6d0ea9d"></script>
+	<script defer src="mobile.js?v=7e1d168f"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
 	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=f428c787" />
@@ -145,7 +146,25 @@
 				</div>
 				<div class="practice-row">
 					<input type="checkbox" id="replayLockHold" />
-					<label for="replayLockHold">Lock hold (replay practice)</label>
+					<label for="replayLockHold">Lock hold (one per piece)</label>
+				</div>
+
+				<h4 class="practice-subheading">Auto Lock</h4>
+				<div class="practice-row">
+					<input type="checkbox" id="autoLockEnabled" />
+					<label for="autoLockEnabled">Auto lock</label>
+				</div>
+				<div class="practice-row">
+					<label for="autoLockDelay">Lock delay (ms)</label>
+					<input type="number" id="autoLockDelay" min="0" max="2000" step="10" value="500" />
+				</div>
+				<div class="practice-row">
+					<label for="autoLockResets">Lock resets</label>
+					<input type="number" id="autoLockResets" min="0" max="100" step="1" value="15" />
+				</div>
+				<div class="practice-row">
+					<input type="checkbox" id="autoLockInfinite" />
+					<label for="autoLockInfinite">Infinite lock resets</label>
 				</div>
 			</div>
 
