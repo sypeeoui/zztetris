@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-v22';
+	const SW_CACHE_VERSION = 'zztetris-mobile-v24';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -1102,14 +1102,20 @@
 	}
 
 	function activateSlideButton(session, element, button) {
-		if (!button.action || session.actions.has(button.action)) return;
+		if (!button.action) return;
 		session.actions.add(button.action);
 		session.elements.add(element);
 		element.classList.add('zz-active');
 		if (button.hold) {
-			session.held.add(button.action);
-			pressHeld(button.action);
+			// A hold action stays pressed for the whole slide session. Sliding
+			// back onto it should not release and re-press it.
+			if (!session.held.has(button.action)) {
+				session.held.add(button.action);
+				pressHeld(button.action);
+			}
 		} else {
+			// Tap actions fire every time the finger enters the button, even
+			// if the same button was already used earlier in this slide.
 			window.ZZInput?.tap(button.action);
 		}
 		haptic();
@@ -1156,6 +1162,7 @@
 					actions: new Set(),
 					held: new Set(),
 					elements: new Set(),
+					lastElement: element,
 				};
 				buttonSessions.set(event.pointerId, session);
 				activateSlideButton(session, element, button);
@@ -1171,7 +1178,13 @@
 			if (!session) return;
 			const target = buttonElementAt(event.clientX, event.clientY);
 			const targetButton = target && buttonByElement.get(target);
-			if (targetButton) activateSlideButton(session, target, targetButton);
+			if (!targetButton) {
+				session.lastElement = null;
+				return;
+			}
+			if (target === session.lastElement) return;
+			session.lastElement = target;
+			activateSlideButton(session, target, targetButton);
 		});
 		const release = (event) => {
 			if (buttonSessions.has(event.pointerId)) {

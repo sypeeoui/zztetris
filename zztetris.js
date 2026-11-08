@@ -124,6 +124,40 @@ function garbageHeight() {
 	return 0;
 }
 
+// 4W and 3W practice modes keep a constant garbage stack: every cleared
+// garbage line is replaced by a fresh line at the bottom of the well. The
+// walls outside the well are preserved.
+function addInfiniteGarbage(lines) {
+	if (!lines) return;
+	const wells = {
+		'4w': { start: 3, width: 4 },
+		'4w4res': { start: 3, width: 4 },
+		'4w5res': { start: 3, width: 4 },
+		'4w6res': { start: 3, width: 4 },
+		'3w': { start: 3, width: 3 },
+	};
+	const well = wells[mode];
+	if (!well) return;
+
+	for (let i = 0; i < lines; i++) {
+		const hole = well.start + Math.floor(Math.random() * well.width);
+		const row = [];
+		for (let col = 0; col < boardSize[0]; col++) {
+			if (col >= well.start && col < well.start + well.width) {
+				row.push(col === hole ? { t: 0, c: '' } : { t: 1, c: 'X' });
+			} else {
+				row.push({ t: 1, c: 'X' });
+			}
+		}
+		board.shift();
+		board.push(row);
+	}
+
+	xPOS = spawn[0];
+	yPOS = spawn[1];
+	updateGhost();
+}
+
 function PC(PC_num) {
     restart();
     var currBag = ('ZLOSIJT'.split('').shuffle().slice(0, (10 - 3*PC_num) % 7));

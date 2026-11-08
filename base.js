@@ -4041,6 +4041,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				if (canMove(pieces[piece][rot], xPOS - 1, yPOS)) {
 					xPOS--;
 					updateGhost();
+					// With instant soft drop, follow the new lowest point
+					// immediately. Otherwise a fast ARR can slide past a hole
+					// before the soft-drop timer gets a chance to drop into it.
+					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
 					playSnd('Move');
 					lastAction = 'L';
 				}
@@ -4049,6 +4053,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				if (canMove(pieces[piece][rot], xPOS + 1, yPOS)) {
 					xPOS++;
 					updateGhost();
+					if (SDR === 0 && (keysDown & flags.SD)) yPOS = yGHO;
 					playSnd('Move');
 					lastAction = 'R';
 				}
@@ -4357,6 +4362,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			// otherwise default to 0% messiness and permanent=true.
 			const messiness = document.getElementById('practiceMessiness') ? parseInt(document.getElementById('practiceMessiness').value) : 0;
 			addPracticeGarbage(permanentLinesCleared, messiness, true);
+		}
+
+		// 4W/3W practice modes have an endless garbage supply.
+		if (typeof addInfiniteGarbage === 'function') {
+			addInfiniteGarbage(garbageLinesCleared);
 		}
 		var cleared = clearedIndexes.length;
 

@@ -79,7 +79,42 @@ function addPracticeGarbage(layers, messiness, permanent, rerandomize = false) {
 	if (lastHoleCol === -1) lastHoleCol = Math.floor(Math.random() * 10);
 	
 	if (rerandomize) {
-		// Rerandomize existing permanent lines
+		// Keep the number of permanent garbage rows in sync with the layer
+		// input. Adding layers pushes the stack up; removing layers lets the
+		// stack above fall down.
+		const existing = board.filter((row) => row.some((cell) => cell.permanent)).length;
+		if (layers > existing) {
+			for (let i = existing; i < layers; i++) {
+				if (Math.random() * 100 < messiness || lastHoleCol === -1) {
+					let nextCol = Math.floor(Math.random() * 10);
+					if (messiness > 0) {
+						while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
+					}
+					lastHoleCol = nextCol;
+				}
+
+				let garbageRow = [];
+				for (let c = 0; c < 10; c++) {
+					if (c === lastHoleCol) {
+						garbageRow.push({ t: 0, c: '' });
+					} else {
+						garbageRow.push({ t: 1, c: 'X', permanent: true });
+					}
+				}
+
+				board.shift();
+				board.push(garbageRow);
+			}
+		} else if (layers < existing) {
+			for (let i = existing; i > layers; i--) {
+				const index = board.findIndex((row) => row.some((cell) => cell.permanent));
+				if (index === -1) break;
+				board.splice(index, 1);
+				board.unshift(aRow());
+			}
+		}
+
+		// Rerandomize all remaining permanent lines.
 		board.forEach((row, rowIndex) => {
 			if (row.some(cell => cell.permanent)) {
 				// Randomize hole for this row
