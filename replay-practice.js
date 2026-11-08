@@ -17,7 +17,6 @@
 	let practiceStartTime = 0;
 	let practiceStartFrame = 0;
 	let gravityBase = 700;
-	let replayHandling = null;
 	let dynamicTimer = null;
 
 	function $(id) {
@@ -66,7 +65,6 @@
 		config.misc.allowed.retry = false;
 		engine = new root.ZZReplayEngine.Engine(config);
 		engine.fromSnapshot(saved.snapshot);
-		replayHandling = Object.assign({}, engine.handling);
 
 		board = convertBoard(engine.board.state);
 		piece = engine.falling.symbol.toUpperCase();
@@ -87,7 +85,8 @@
 		queue = convertQueue(engine.queue.raw());
 		holdP = engine.held ? engine.held.toUpperCase() : '';
 		held = false;
-		replayHoldLocked = !!engine.holdLocked && lockHoldEnabled();
+		replayFreeHold = !lockHoldEnabled();
+		replayHoldLocked = !!engine.holdLocked && !replayFreeHold;
 
 		combo = Number(engine.stats.combo);
 		b2b = Math.max(0, Number(engine.stats.b2b));
@@ -243,7 +242,8 @@
 		queue = JSON.parse(initial.queue);
 		holdP = initial.holdP;
 		held = false;
-		replayHoldLocked = !!engine.holdLocked && lockHoldEnabled();
+		replayFreeHold = !lockHoldEnabled();
+		replayHoldLocked = !!engine.holdLocked && !replayFreeHold;
 		piece = initial.piece;
 		xPOS = initial.xPOS;
 		yPOS = initial.yPOS;
@@ -379,23 +379,11 @@
 				location.href = 'index.html';
 			});
 		}
-		const handling = $('replayUseHandling');
-		if (handling) {
-			handling.addEventListener('change', () => {
-				if (!active) return;
-				if (handling.checked && replayHandling) {
-					DAS = replayHandling.das * FRAME_MS;
-					ARR = replayHandling.arr * FRAME_MS;
-					SDR = replayHandling.sdf * FRAME_MS;
-				} else if (typeof applyStoredConfig === 'function') {
-					applyStoredConfig();
-				}
-			});
-		}
 		const lockHold = $('replayLockHold');
 		if (lockHold) {
 			lockHold.addEventListener('change', () => {
 				if (!active) return;
+				replayFreeHold = !lockHold.checked;
 				replayHoldLocked = lockHold.checked && !!engine.holdLocked;
 			});
 		}

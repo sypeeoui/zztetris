@@ -694,17 +694,6 @@ footer {
 	line-height: 1.2;
 }
 
-.replay-practice-handling {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	color: #bdbdbd;
-}
-
-.replay-practice-handling input {
-	width: auto;
-}
-
 #practiceGravityValue {
 	display: inline-block;
 	margin-left: 6px;

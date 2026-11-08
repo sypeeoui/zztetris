@@ -9,15 +9,15 @@
 	<script defer src="stats-core.js?v=4c609439"></script>
 	<script defer src="replay-engine.js?v=db2dd99e"></script>
 	<script defer src="replay-common.js?v=8fad533f"></script>
-	<script defer src="base.js?v=0abf303c"></script>
+	<script defer src="base.js?v=ef3281d0"></script>
 	<script defer src="tetrio.js"></script>
 	<script defer src="zztetris.js?v=7b5dd094"></script>
 	<script defer src="stats.js?v=7f77366f"></script>
-	<script defer src="replay-practice.js?v=80d64177"></script>
-	<script defer src="mobile.js?v=eb0501bf"></script>
+	<script defer src="replay-practice.js?v=7ad92120"></script>
+	<script defer src="mobile.js?v=3d9d912a"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=84e0f81d" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=55679bba" />
 	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=75f7bf3e" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
@@ -109,6 +109,10 @@
 					<label for="practiceGravityMs">Gravity (ms/row)</label>
 					<input type="number" id="practiceGravityMs" min="0" max="2000" step="10" value="700" />
 				</div>
+				<div class="practice-row">
+					<input type="checkbox" id="replayLockHold" />
+					<label for="replayLockHold">Lock hold (replay practice)</label>
+				</div>
 			</div>
 
 			<div class="nav-section">
@@ -140,14 +144,6 @@
 					<div class="session-header">SESSION</div>
 					<div id="replayPracticeStatus" class="replay-practice-status" hidden>
 						<span id="replayPracticeSource"></span>
-						<label class="replay-practice-handling">
-							<input type="checkbox" id="replayUseHandling" />
-							Use replay handling
-						</label>
-						<label class="replay-practice-handling">
-							<input type="checkbox" id="replayLockHold" />
-							Lock hold
-						</label>
 						<button class="button" id="replayPracticeResetBtn" type="button">Reset to replay state</button>
 						<a class="button" id="replayPracticeExitBtn" href="index.html">Exit replay practice</a>
 					</div>

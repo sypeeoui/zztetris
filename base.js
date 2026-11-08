@@ -246,6 +246,9 @@ var piece = '';
 var holdP = '';
 var held = false;
 var replayHoldLocked = false;
+// Replay practice free-hold mode: allow swapping the hold piece repeatedly
+// instead of the usual one hold per piece.
+var replayFreeHold = false;
 // Gravity interval in ms. callback() seeds it from its argument; replay
 // practice can change it live through ZZReplayPractice.
 var zzGravityMs = 700;
@@ -4311,7 +4314,9 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		xPOS = spawn[0];
 		yPOS = spawn[1];
 		held = true;
-		replayHoldLocked = true;
+		// Free-hold mode keeps the hold unlocked so the piece can be swapped
+		// back and forth; otherwise it is one hold per piece.
+		replayHoldLocked = !replayFreeHold;
 		if (holdP) {
 			holdP = [piece, (piece = holdP)][0];
 		} else {
