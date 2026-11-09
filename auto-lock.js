@@ -270,6 +270,13 @@
 		applySettingsToUi(saved);
 		bindUi();
 		applySettings();
+		// The settings popup can import the auto-lock group while the game is
+		// running. Apply it live instead of requiring a reload.
+		window.addEventListener('storage', (event) => {
+			if (event.key !== STORAGE_KEY && event.key !== null) return;
+			applySettingsToUi(loadSettings());
+			applySettings();
+		});
 	}
 
 	root.ZZAutoLock = {

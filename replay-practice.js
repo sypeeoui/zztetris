@@ -336,6 +336,11 @@
 	}
 
 	function bindGravityControls() {
+		// Normal practice uses ZZPracticeSettings for gravity persistence.
+		// Replay practice owns the controls because its gravity comes from the
+		// replay and must not overwrite the user's practice setting.
+		const params = new URLSearchParams(location.search);
+		if (params.get('replayPractice') !== '1') return;
 		const slider = $('practiceGravityMultiplier');
 		const input = $('practiceGravityMs');
 		const label = $('practiceGravityValue');
@@ -401,5 +406,6 @@
 		restart,
 		isActive,
 		updateGarbageMeter,
+		getGravityMs: () => zzGravityMs,
 	};
 })(typeof globalThis !== 'undefined' ? globalThis : this);

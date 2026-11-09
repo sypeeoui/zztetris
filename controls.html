@@ -85,6 +85,7 @@
 			}
 			input[type='number'],
 			input[type='text'],
+			textarea,
 			select {
 				background: #1a1a1a;
 				color: #fff;
@@ -105,7 +106,8 @@
 				margin-top: 22px;
 				flex-wrap: wrap;
 			}
-			.settings-actions .button {
+			.settings-actions .button,
+			.backup-actions .button {
 				display: inline-block;
 				background-color: #222;
 				border: 2px solid white;
@@ -119,7 +121,8 @@
 				cursor: pointer;
 				transition: background-color 0.3s;
 			}
-			.settings-actions .button:hover {
+			.settings-actions .button:hover,
+			.backup-actions .button:hover {
 				background-color: #4caf50;
 			}
 			.stats-toolbar {
@@ -185,6 +188,81 @@
 				color: #9a9a9a;
 				font-size: 12px;
 				margin-top: 8px;
+			}
+			kbd.capturing {
+				background-color: #4caf50;
+				border-color: #4caf50;
+				color: #fff;
+			}
+			.backup-groups {
+				display: grid;
+				grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+				gap: 6px 16px;
+				padding: 10px;
+				background: #1a1a1a;
+				border: 1px solid #444;
+				border-radius: 6px;
+			}
+			.backup-group {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 13px;
+				cursor: pointer;
+			}
+			.backup-group input {
+				cursor: pointer;
+			}
+			.backup-actions {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 10px;
+				margin-top: 12px;
+			}
+			.backup-actions .button {
+				padding: 6px 14px;
+				font-size: 13px;
+				letter-spacing: 0.5px;
+			}
+			.backup-paste {
+				margin-top: 12px;
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+			.backup-paste textarea {
+				width: 100%;
+				min-height: 82px;
+				resize: vertical;
+				font-family: monospace;
+				font-size: 12px;
+			}
+			.backup-import {
+				margin-top: 12px;
+				padding: 10px;
+				border: 1px solid #555;
+				border-radius: 6px;
+				background: #222;
+			}
+			.backup-help {
+				color: #bbb;
+				font-size: 13px;
+				margin-bottom: 8px;
+			}
+			.backup-status {
+				min-height: 18px;
+				margin-top: 10px;
+				font-size: 13px;
+				color: #bbb;
+			}
+			.backup-status[data-kind='success'] {
+				color: #81c784;
+			}
+			.backup-status[data-kind='error'] {
+				color: #ff8a80;
+			}
+			.backup-status[data-kind='info'] {
+				color: #90caf9;
 			}
 		</style>
 	</head>
@@ -302,6 +380,39 @@
 						additional session stats shown underneath them.
 					</div>
 				</section>
+				<section class="settings-card settings-card--wide">
+					<h2>Backup &amp; Restore</h2>
+					<div class="stats-hint" style="margin-top: 0; margin-bottom: 8px">
+						Export or import only the settings groups you select. Groups that are not in the
+						backup, or not checked when importing, stay exactly as they are.
+					</div>
+					<div class="backup-groups" id="backupGroups"></div>
+					<div class="backup-actions">
+						<button type="button" class="button" id="backupExport">Export selected</button>
+						<button type="button" class="button" id="backupCopy">Copy selected</button>
+						<label class="button" for="backupFile">Import file…</label>
+						<input type="file" id="backupFile" accept="application/json,.json" hidden />
+					</div>
+					<div class="backup-paste">
+						<textarea
+							id="backupPaste"
+							placeholder="Or paste a settings backup JSON here…"
+							spellcheck="false"
+						></textarea>
+						<div class="backup-actions" style="margin-top: 0">
+							<button type="button" class="button" id="backupInspect">Load pasted JSON</button>
+						</div>
+					</div>
+					<div class="backup-import" id="backupImport" hidden>
+						<div class="backup-help">Choose the groups to apply:</div>
+						<div class="backup-groups" id="backupImportGroups"></div>
+						<div class="backup-actions">
+							<button type="button" class="button" id="backupApply">Apply selected</button>
+							<button type="button" class="button" id="backupCancel">Cancel</button>
+						</div>
+					</div>
+					<div class="backup-status" id="backupStatus"></div>
+				</section>
 			</div>
 
 			<div class="settings-actions">
@@ -310,13 +421,16 @@
 			</div>
 		</div>
 
+		<script src="keybinds.js?v=d3dc5230"></script>
+		<script src="practice-settings.js?v=43a1be04"></script>
 		<script src="stats-config.js?v=294eb553"></script>
+		<script src="settings-backup.js?v=ae20c5fc"></script>
 		<script>
 			const print = console.log;
 			const LS = localStorage;
 
 			// Layout: 11 keybinds, 5 handling values, 3 reset keybinds.
-			var ctrlDat = [
+			const DEFAULT_CTRL_DAT = [
 				'ArrowLeft',
 				'ArrowRight',
 				'ArrowDown',
@@ -337,41 +451,7 @@
 				'KeyU',
 				'KeyI',
 			];
-
-			var ctrlsDat = LS.config;
-			if (ctrlsDat && LS.version == '2023-05-02a') {
-				try {
-					var ctrls = JSON.parse(ctrlsDat);
-					for (let i = 0; i < 11; i++) {
-						var c = ctrls[i];
-						if (!c) continue;
-						ctrlDat[i] = c;
-						document.getElementById(String(i + 1)).textContent = c.length == 1 ? c.toUpperCase() : c;
-					}
-					['das', 'arr', 'sdr', 'cellpx', 'audiolevel'].forEach((id, idx) => {
-						var input = document.getElementById(id);
-						var value = parseInt(ctrls[idx + 11]);
-						if (Number.isFinite(value)) {
-							input.value = value;
-							ctrlDat[idx + 11] = value;
-						}
-					});
-					for (let i = 0; i < 3; i++) {
-						var resetKey = ctrls[16 + i];
-						if (!resetKey) continue;
-						ctrlDat[16 + i] = resetKey;
-						document.getElementById(String(12 + i)).textContent =
-							resetKey.length == 1 ? resetKey.toUpperCase() : resetKey;
-					}
-				} catch (error) {
-					console.warn('Could not load saved controls:', error);
-				}
-			}
-
-			function saveCtrls() {
-				LS.config = JSON.stringify(ctrlDat);
-				LS.version = '2023-05-02a';
-			}
+			var ctrlDat = DEFAULT_CTRL_DAT.slice();
 
 			// Keybind rows: element id -> ctrlDat index.
 			const keybindRows = [
@@ -390,45 +470,189 @@
 				[13, 17],
 				[14, 18],
 			];
+			const HANDLING_ROWS = [
+				['das', 11],
+				['arr', 12],
+				['sdr', 13],
+				['cellpx', 14],
+				['audiolevel', 15],
+			];
+
+			function keybindParse(value) {
+				if (window.ZZKeybinds) return ZZKeybinds.parse(value);
+				return typeof value === 'string' ? value : '';
+			}
+
+			function keybindFormat(value) {
+				if (window.ZZKeybinds) return ZZKeybinds.format(value);
+				return value;
+			}
+
+			function setKeybindDisplay(dataIndex) {
+				for (const [elementId, index] of keybindRows) {
+					if (index !== dataIndex) continue;
+					const element = document.getElementById(String(elementId));
+					if (!element) continue;
+					element.textContent = keybindFormat(ctrlDat[dataIndex]);
+					element.title = ctrlDat[dataIndex] || '';
+				}
+			}
+
+			function syncKeybindDisplays() {
+				for (const [, dataIndex] of keybindRows) setKeybindDisplay(dataIndex);
+			}
+
+			function loadCtrls() {
+				ctrlDat = DEFAULT_CTRL_DAT.slice();
+				const ctrlsDat = LS.config;
+				if (ctrlsDat && LS.version == '2023-05-02a') {
+					try {
+						const ctrls = JSON.parse(ctrlsDat);
+						for (let i = 0; i < 11; i++) {
+							const parsed = keybindParse(ctrls[i] || '');
+							if (parsed) ctrlDat[i] = parsed;
+						}
+						for (const [id, index] of HANDLING_ROWS) {
+							const value = parseInt(ctrls[index], 10);
+							if (Number.isFinite(value)) ctrlDat[index] = String(value);
+						}
+						for (let i = 0; i < 3; i++) {
+							const parsed = keybindParse(ctrls[16 + i] || '');
+							if (parsed) ctrlDat[16 + i] = parsed;
+						}
+					} catch (error) {
+						console.warn('Could not load saved controls:', error);
+					}
+				}
+				syncKeybindDisplays();
+				for (const [id, index] of HANDLING_ROWS) {
+					const input = document.getElementById(id);
+					if (!input) continue;
+					input.value = ctrlDat[index];
+				}
+			}
+
+			function saveCtrls() {
+				LS.config = JSON.stringify(ctrlDat);
+				LS.version = '2023-05-02a';
+			}
+
+			// Click a shortcut and press the new key combination. A modifier
+			// pressed and released on its own binds that modifier key, which is
+			// how the existing Shift hold binding keeps working.
+			let keyCapture = null;
+
+			function endKeyCapture(restore) {
+				if (!keyCapture) return;
+				const { element, dataIndex, original } = keyCapture;
+				element.classList.remove('capturing');
+				if (restore) {
+					ctrlDat[dataIndex] = original;
+					setKeybindDisplay(dataIndex);
+				}
+				document.removeEventListener('keydown', onCaptureKeyDown, true);
+				document.removeEventListener('keyup', onCaptureKeyUp, true);
+				keyCapture = null;
+			}
+
+			function beginKeyCapture(element, dataIndex) {
+				if (keyCapture) endKeyCapture(true);
+				keyCapture = {
+					element,
+					dataIndex,
+					original: ctrlDat[dataIndex],
+					pendingModifier: null,
+				};
+				element.textContent = 'Press a key…';
+				element.classList.add('capturing');
+				document.addEventListener('keydown', onCaptureKeyDown, true);
+				document.addEventListener('keyup', onCaptureKeyUp, true);
+			}
+
+			function commitKeyCapture(binding) {
+				if (!keyCapture) return;
+				const canonical = keybindParse(binding);
+				if (!canonical) {
+					endKeyCapture(true);
+					return;
+				}
+				const { dataIndex, original } = keyCapture;
+				// Keep one action per shortcut by swapping with the row that
+				// already uses this combination.
+				const other = keybindRows.find(
+					([, index]) => index !== dataIndex && ctrlDat[index] === canonical
+				);
+				if (other) {
+					ctrlDat[other[1]] = original;
+					setKeybindDisplay(other[1]);
+				}
+				ctrlDat[dataIndex] = canonical;
+				saveCtrls();
+				endKeyCapture(false);
+				setKeybindDisplay(dataIndex);
+			}
+
+			function onCaptureKeyDown(event) {
+				if (!keyCapture) return;
+				event.preventDefault();
+				event.stopPropagation();
+				if (window.ZZKeybinds && ZZKeybinds.isModifierCode(event.code)) {
+					keyCapture.pendingModifier = event.code;
+					keyCapture.element.textContent = `${keybindFormat(event.code)} + …`;
+					return;
+				}
+				if (
+					event.code === 'Escape' &&
+					!event.ctrlKey &&
+					!event.altKey &&
+					!event.shiftKey &&
+					!event.metaKey
+				) {
+					endKeyCapture(true);
+					return;
+				}
+				if (event.repeat) return;
+				commitKeyCapture(
+					window.ZZKeybinds ? ZZKeybinds.fromEvent(event) : event.code
+				);
+			}
+
+			function onCaptureKeyUp(event) {
+				if (!keyCapture) return;
+				event.preventDefault();
+				event.stopPropagation();
+				if (
+					window.ZZKeybinds &&
+					ZZKeybinds.isModifierCode(event.code) &&
+					keyCapture.pendingModifier === event.code
+				) {
+					commitKeyCapture(event.code);
+				}
+			}
 
 			for (const [elementId, dataIndex] of keybindRows) {
 				const element = document.getElementById(String(elementId));
-				element.onclick = function () {
-					if (element.textContent == 'Press a key...') return;
-					element.textContent = 'Press a key...';
+				element.addEventListener('click', () => beginKeyCapture(element, dataIndex));
+			}
+			window.addEventListener('blur', () => endKeyCapture(true));
 
-					document.addEventListener('keydown', respond);
-					function respond(event) {
-						event.preventDefault();
-						const key = event.code;
-						ctrlDat[dataIndex] = key;
-						element.textContent = key;
-						saveCtrls();
-						document.removeEventListener('keydown', respond);
-					}
-				};
+			for (const [id, index] of HANDLING_ROWS) {
+				const input = document.getElementById(id);
+				input.addEventListener('input', function () {
+					const value = input.value ? input.value : '0';
+					ctrlDat[index] = value;
+					saveCtrls();
+				});
 			}
 
-			['das', 'arr', 'sdr', 'cellpx', 'audiolevel'].forEach((id, idx) => {
-				const input = document.getElementById(id);
-				input.oninput = function () {
-					const value = input.value ? input.value : '0';
-					ctrlDat[idx + 11] = value;
-					saveCtrls();
-				};
-			});
-
 			// Session stats configuration.
-			const statsConfig = ZZStatsConfig.loadConfig();
+			let statsConfig = ZZStatsConfig.loadConfig();
 			const showPanelInput = document.getElementById('statsShowPanel');
 			const finesseSoundInput = document.getElementById('statsFinesseSound');
 			const exemptSpinsInput = document.getElementById('statsExemptSpins');
 			const finesseSoundSelect = document.getElementById('statsFinesseSoundName');
 			const statsOptions = document.getElementById('statsOptions');
-
-			showPanelInput.checked = statsConfig.showPanel;
-			finesseSoundInput.checked = statsConfig.finesseSound;
-			exemptSpinsInput.checked = statsConfig.exemptSpins;
+			const statCheckboxes = [];
 
 			for (const option of ZZStatsConfig.SOUND_OPTIONS) {
 				const opt = document.createElement('option');
@@ -436,33 +660,43 @@
 				opt.textContent = option.label;
 				finesseSoundSelect.appendChild(opt);
 			}
-			finesseSoundSelect.value = statsConfig.finesseSoundName;
 
-			const groups = {};
+			const statGroups = {};
 			for (const def of ZZStatsConfig.STAT_DEFS) {
-				if (!groups[def.group]) {
+				if (!statGroups[def.group]) {
 					const title = document.createElement('div');
 					title.className = 'stat-group-title';
 					title.textContent = def.group;
 					statsOptions.appendChild(title);
-					groups[def.group] = title;
+					statGroups[def.group] = title;
 				}
 				const label = document.createElement('label');
 				label.className = 'stat-option';
 				const checkbox = document.createElement('input');
 				checkbox.type = 'checkbox';
 				checkbox.value = def.id;
-				checkbox.checked = statsConfig.visibleStats.includes(def.id);
 				checkbox.addEventListener('change', saveStatsConfig);
 				label.appendChild(checkbox);
 				label.appendChild(document.createTextNode(def.label));
 				statsOptions.appendChild(label);
+				statCheckboxes.push(checkbox);
+			}
+
+			function loadStatsConfigUi() {
+				statsConfig = ZZStatsConfig.loadConfig();
+				showPanelInput.checked = statsConfig.showPanel;
+				finesseSoundInput.checked = statsConfig.finesseSound;
+				exemptSpinsInput.checked = statsConfig.exemptSpins;
+				finesseSoundSelect.value = statsConfig.finesseSoundName;
+				for (const checkbox of statCheckboxes) {
+					checkbox.checked = statsConfig.visibleStats.includes(checkbox.value);
+				}
 			}
 
 			function saveStatsConfig() {
-				const visibleStats = Array.from(
-					statsOptions.querySelectorAll('input[type="checkbox"]:checked')
-				).map((checkbox) => checkbox.value);
+				const visibleStats = statCheckboxes
+					.filter((checkbox) => checkbox.checked)
+					.map((checkbox) => checkbox.value);
 				ZZStatsConfig.saveConfig({
 					showPanel: showPanelInput.checked,
 					finesseSound: finesseSoundInput.checked,
@@ -478,27 +712,202 @@
 			finesseSoundSelect.addEventListener('change', saveStatsConfig);
 
 			document.getElementById('statsSelectAll').addEventListener('click', () => {
-				statsOptions.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+				statCheckboxes.forEach((checkbox) => {
 					checkbox.checked = true;
 				});
 				saveStatsConfig();
 			});
 
 			document.getElementById('statsSelectNone').addEventListener('click', () => {
-				statsOptions.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+				statCheckboxes.forEach((checkbox) => {
 					checkbox.checked = false;
 				});
 				saveStatsConfig();
 			});
 
-			document.getElementById('resetDefaults').addEventListener('click', () => {
-				delete LS.version;
-				delete LS.config;
+			// Backup & restore.
+			const backupApi = window.ZZSettingsBackup;
+			const backupGroups = document.getElementById('backupGroups');
+			const backupImport = document.getElementById('backupImport');
+			const backupImportGroups = document.getElementById('backupImportGroups');
+			const backupStatus = document.getElementById('backupStatus');
+			const backupPaste = document.getElementById('backupPaste');
+			const backupFile = document.getElementById('backupFile');
+			let importPreview = null;
+
+			function setBackupStatus(message, kind) {
+				backupStatus.textContent = message || '';
+				backupStatus.dataset.kind = kind || '';
+			}
+
+			function selectedExportGroupIds() {
+				return Array.from(
+					backupGroups.querySelectorAll('input[type="checkbox"]:checked')
+				).map((checkbox) => checkbox.value);
+			}
+
+			function makeBackupJson() {
+				const ids = selectedExportGroupIds();
+				if (!ids.length) throw new Error('Select at least one group to export.');
+				return JSON.stringify(backupApi.buildBackup(ids), null, 2);
+			}
+
+			function downloadText(text, filename) {
+				const blob = new Blob([text], { type: 'application/json' });
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = filename;
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+				setTimeout(() => URL.revokeObjectURL(url), 1000);
+			}
+
+			for (const group of backupApi.GROUPS) {
+				const label = document.createElement('label');
+				label.className = 'backup-group';
+				label.title = group.description;
+				const checkbox = document.createElement('input');
+				checkbox.type = 'checkbox';
+				checkbox.value = group.id;
+				checkbox.checked = true;
+				label.appendChild(checkbox);
+				label.appendChild(document.createTextNode(group.label));
+				backupGroups.appendChild(label);
+			}
+
+			document.getElementById('backupExport').addEventListener('click', () => {
 				try {
-					LS.removeItem(ZZStatsConfig.STORAGE_KEY);
-				} catch (error) {}
+					const date = new Date().toISOString().slice(0, 10);
+					downloadText(makeBackupJson(), `zztetris-settings-${date}.json`);
+					setBackupStatus('Backup exported.', 'success');
+				} catch (error) {
+					setBackupStatus(error.message || String(error), 'error');
+				}
+			});
+
+			document.getElementById('backupCopy').addEventListener('click', () => {
+				let json;
+				try {
+					json = makeBackupJson();
+				} catch (error) {
+					setBackupStatus(error.message || String(error), 'error');
+					return;
+				}
+				if (!navigator.clipboard?.writeText) {
+					window.prompt('Copy this settings backup:', json);
+					return;
+				}
+				navigator.clipboard
+					.writeText(json)
+					.then(() => setBackupStatus('Backup copied to the clipboard.', 'success'))
+					.catch(() => {
+						window.prompt('Copy this settings backup:', json);
+					});
+			});
+
+			function buildImportGroupList(groups) {
+				backupImportGroups.innerHTML = '';
+				for (const group of groups) {
+					const label = document.createElement('label');
+					label.className = 'backup-group';
+					const checkbox = document.createElement('input');
+					checkbox.type = 'checkbox';
+					checkbox.value = group.id;
+					checkbox.checked = true;
+					checkbox.dataset.importGroup = '1';
+					label.appendChild(checkbox);
+					label.appendChild(document.createTextNode(group.label));
+					backupImportGroups.appendChild(label);
+				}
+			}
+
+			function inspectBackupText(text, sourceLabel) {
+				const result = backupApi.inspectBackup(text);
+				if (result.error) {
+					importPreview = null;
+					backupImport.hidden = true;
+					setBackupStatus(result.error, 'error');
+					return;
+				}
+				importPreview = result;
+				buildImportGroupList(result.groups);
+				backupImport.hidden = false;
+				const invalid = result.invalid?.length
+					? ` Skipped unsupported: ${result.invalid.join(', ')}.`
+					: '';
+				setBackupStatus(
+					`Loaded ${result.groups.length} group(s) from ${sourceLabel}.${invalid}`,
+					'info'
+				);
+			}
+
+			backupFile.addEventListener('change', () => {
+				const file = backupFile.files && backupFile.files[0];
+				if (!file) return;
+				const reader = new FileReader();
+				reader.onload = () => inspectBackupText(String(reader.result || ''), file.name);
+				reader.onerror = () => setBackupStatus('Could not read that file.', 'error');
+				reader.readAsText(file);
+				backupFile.value = '';
+			});
+
+			document.getElementById('backupInspect').addEventListener('click', () => {
+				const text = backupPaste.value.trim();
+				if (!text) {
+					setBackupStatus('Paste a settings backup first.', 'error');
+					return;
+				}
+				inspectBackupText(text, 'the pasted JSON');
+			});
+
+			document.getElementById('backupApply').addEventListener('click', () => {
+				if (!importPreview) return;
+				const selected = Array.from(
+					backupImportGroups.querySelectorAll('input[data-import-group]:checked')
+				).map((checkbox) => checkbox.value);
+				if (!selected.length) {
+					setBackupStatus('Select at least one group to apply.', 'error');
+					return;
+				}
+				const result = backupApi.applyBackup(importPreview.groups, selected);
+				loadCtrls();
+				loadStatsConfigUi();
+				backupImport.hidden = true;
+				importPreview = null;
+				if (result.errors.length) {
+					setBackupStatus(
+						`Applied ${result.applied.length} group(s). ${result.errors.join('; ')}`,
+						'error'
+					);
+				} else {
+					setBackupStatus(`Applied: ${result.applied.join(', ')}.`, 'success');
+				}
+			});
+
+			document.getElementById('backupCancel').addEventListener('click', () => {
+				backupImport.hidden = true;
+				importPreview = null;
+				setBackupStatus('');
+			});
+
+			document.getElementById('resetDefaults').addEventListener('click', () => {
+				if (!window.confirm('Reset all game settings to defaults?')) return;
+				if (window.ZZSettingsBackup?.resetAll) {
+					ZZSettingsBackup.resetAll();
+				} else {
+					delete LS.version;
+					delete LS.config;
+					try {
+						LS.removeItem(ZZStatsConfig.STORAGE_KEY);
+					} catch (error) {}
+				}
 				location.reload();
 			});
+
+			loadCtrls();
+			loadStatsConfigUi();
 		</script>
 	</body>
 </html>

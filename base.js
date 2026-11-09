@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=168c48ca', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=0178b503', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -178,6 +178,14 @@ var audiolevel = 100;
 //? Sketchy settings processing probably could be simplified
 //? Should probably add handling settings in here in the future - g3ner1c
 
+// Keybinds are stored as canonical shortcut strings (see keybinds.js). This
+// helper keeps older single-key configs working and lets the legacy pages
+// fall back to the raw KeyboardEvent.code when keybinds.js is not loaded.
+function parseBinding(value) {
+	if (window.ZZKeybinds) return ZZKeybinds.parse(value);
+	return typeof value === 'string' ? value : '';
+}
+
 if (LS.config && LS.version == '2023-05-02a') {
 
 	// Load saved config from LocalStorage
@@ -188,13 +196,14 @@ if (LS.config && LS.version == '2023-05-02a') {
 
 	ctrl = {};
 	for (let i = 0; i < 11; i++) {
-		ctrl[CTRLS[i]] = codes[i];
+		const key = parseBinding(CTRLS[i]) || DEFAULT_CTRL[codes[i]] || Object.keys(DEFAULT_CTRL)[i];
+		if (key) ctrl[key] = codes[i];
 	}
 	// Reset keybinds were appended to the config array; older configs fall
 	// back to the defaults.
-	ctrl[CTRLS[16] || 'KeyO'] = 'RESET_SESSION';
-	ctrl[CTRLS[17] || 'KeyU'] = 'RESET_QUEUE';
-	ctrl[CTRLS[18] || 'KeyI'] = 'RESET_QUEUE_HOLD';
+	ctrl[parseBinding(CTRLS[16]) || DEFAULT_CTRL.RESET_SESSION || 'KeyO'] = 'RESET_SESSION';
+	ctrl[parseBinding(CTRLS[17]) || DEFAULT_CTRL.RESET_QUEUE || 'KeyU'] = 'RESET_QUEUE';
+	ctrl[parseBinding(CTRLS[18]) || DEFAULT_CTRL.RESET_QUEUE_HOLD || 'KeyI'] = 'RESET_QUEUE_HOLD';
 	DAS = parseInt(CTRLS[11]);
 	ARR = parseInt(CTRLS[12]);
 	SDR = parseInt(CTRLS[13]);
@@ -331,11 +340,12 @@ function applyStoredConfig() {
 	const codes = ['L', 'R', 'SD', 'HD', 'HL', 'CW', 'CCW', 'R180', 'RE', 'UNDO', 'REDO'];
 	const nextCtrl = {};
 	for (let i = 0; i < 11; i++) {
-		if (CTRLS[i]) nextCtrl[CTRLS[i]] = codes[i];
+		const key = parseBinding(CTRLS[i]) || DEFAULT_CTRL[codes[i]];
+		if (key) nextCtrl[key] = codes[i];
 	}
-	nextCtrl[CTRLS[16] || 'KeyO'] = 'RESET_SESSION';
-	nextCtrl[CTRLS[17] || 'KeyU'] = 'RESET_QUEUE';
-	nextCtrl[CTRLS[18] || 'KeyI'] = 'RESET_QUEUE_HOLD';
+	nextCtrl[parseBinding(CTRLS[16]) || DEFAULT_CTRL.RESET_SESSION || 'KeyO'] = 'RESET_SESSION';
+	nextCtrl[parseBinding(CTRLS[17]) || DEFAULT_CTRL.RESET_QUEUE || 'KeyU'] = 'RESET_QUEUE';
+	nextCtrl[parseBinding(CTRLS[18]) || DEFAULT_CTRL.RESET_QUEUE_HOLD || 'KeyI'] = 'RESET_QUEUE_HOLD';
 	ctrl = nextCtrl;
 
 	const das = parseInt(CTRLS[11], 10);
@@ -348,6 +358,10 @@ function applyStoredConfig() {
 	if (Number.isFinite(cell)) setCellSize(cell);
 	const audio = parseInt(CTRLS[15], 10);
 	if (Number.isFinite(audio)) audiolevel = audio;
+	// Drop any keys pressed under the old bindings; they are re-read on the
+	// next keydown. Avoids a held key staying stuck after a live settings
+	// change.
+	window.ZZClearActiveBindings?.();
 }
 
 window.addEventListener('storage', (event) => {
@@ -3731,21 +3745,25 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	keysDown = 0;
 	lastKeys = 0;
+	var HANDLING_STEP = 1000 / 60;
 
 	// Hold-lock applies to every practice mode, not only replay practice.
 	// Unchecked means free hold: the held piece can be swapped repeatedly.
 	const holdLockCheckbox = document.getElementById('replayLockHold');
 	if (holdLockCheckbox) {
-		try {
-			const savedHoldLock = localStorage.getItem('zztetris_hold_lock_v1');
-			if (savedHoldLock !== null) {
-				holdLockCheckbox.checked = savedHoldLock === '1';
+		const syncHoldLock = () => {
+			let savedHoldLock = null;
+			try {
+				savedHoldLock = localStorage.getItem('zztetris_hold_lock_v1');
+			} catch (error) {
+				// Storage can be unavailable in private mode.
 			}
-		} catch (error) {
-			// Storage can be unavailable in private mode.
-		}
-		replayFreeHold = !holdLockCheckbox.checked;
-		if (replayFreeHold) replayHoldLocked = false;
+			// No saved value means the default: free hold.
+			holdLockCheckbox.checked = savedHoldLock === '1';
+			replayFreeHold = !holdLockCheckbox.checked;
+			if (replayFreeHold) replayHoldLocked = false;
+		};
+		syncHoldLock();
 		holdLockCheckbox.addEventListener('change', () => {
 			replayFreeHold = !holdLockCheckbox.checked;
 			if (replayFreeHold) replayHoldLocked = false;
@@ -3756,6 +3774,12 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				);
 			} catch (error) {
 				// Storage can be unavailable in private mode.
+			}
+		});
+		// Settings imports write the key from the settings popup.
+		window.addEventListener('storage', (event) => {
+			if (event.key === 'zztetris_hold_lock_v1' || event.key === null) {
+				syncHoldLock();
 			}
 		});
 	}
@@ -3824,6 +3848,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		input = 'R';
 		keysDown |= flags[input];
 		window.ZZStats?.onKeyDown(input);
+		checkShift();
 	});
 
 	document.getElementById('tc-r').addEventListener('touchend', function (e) {
@@ -3833,12 +3858,14 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
+		checkShift();
 	});
 
 	document.getElementById('tc-l').addEventListener('touchstart', function (e) {
 		input = 'L';
 		keysDown |= flags[input];
 		window.ZZStats?.onKeyDown(input);
+		checkShift();
 	});
 
 	document.getElementById('tc-l').addEventListener('touchend', function (e) {
@@ -3848,65 +3875,125 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
+		checkShift();
 	});
 
 
 	//* keyboard input
+	// Active shortcuts, keyed by canonical binding. Tracking the binding rather
+	// than only the action bit lets a chord release cleanly when a modifier is
+	// released before the base key.
+	const activeBindings = new Map();
+
+	function actionHasActiveBinding(action) {
+		for (const entry of activeBindings.values()) {
+			if (entry.action === action) return true;
+		}
+		return false;
+	}
+
+	function pressKeyboardBinding(binding, input, code) {
+		if (activeBindings.has(binding)) return false;
+		activeBindings.set(binding, { action: input, code });
+		keysDown |= flags[input];
+		window.ZZStats?.onKeyDown(input);
+		checkShift();
+		return true;
+	}
+
+	function releaseKeyboardBinding(binding) {
+		const entry = activeBindings.get(binding);
+		if (!entry) return;
+		activeBindings.delete(binding);
+		if (actionHasActiveBinding(entry.action)) return;
+		if (keysDown & flags[entry.action]) keysDown ^= flags[entry.action];
+		window.ZZStats?.onKeyUp(entry.action);
+		if (!(keysDown & flags.L) && !(keysDown & flags.R)) dasID++;
+		checkShift();
+	}
+
+	function releaseBindingsForEvent(event) {
+		if (!window.ZZKeybinds) {
+			const input = ctrl[event.code];
+			if (input) {
+				if (keysDown & flags[input]) keysDown ^= flags[input];
+				window.ZZStats?.onKeyUp(input);
+				if (!(keysDown & flags.L) && !(keysDown & flags.R)) dasID++;
+				checkShift();
+			}
+			return;
+		}
+		const modifierReleased = ZZKeybinds.isModifierCode(event.code);
+		for (const [binding, entry] of Array.from(activeBindings.entries())) {
+			if (
+				entry.code === event.code ||
+				(modifierReleased && !ZZKeybinds.modifiersSatisfied(binding, event))
+			) {
+				releaseKeyboardBinding(binding);
+			}
+		}
+		checkShift();
+	}
+
+	window.ZZClearActiveBindings = () => {
+		activeBindings.clear();
+		keysDown = 0;
+		lastKeys = 0;
+		dasID++;
+		stopShift();
+	};
+
 	document.addEventListener('keydown', e => {
 		if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
 			return;
 		}
 		if (zzPaused) return;
-		const input = ctrl[e.code];
-		if (input) {
-			e.preventDefault();
-			if (document.activeElement && document.activeElement.blur) {
-				document.activeElement.blur();
-			}
-			keysDown |= flags[input]; //* sets key in keysDown
+		const binding = window.ZZKeybinds ? ZZKeybinds.fromEvent(e) : e.code;
+		const input = binding ? ctrl[binding] : undefined;
+		if (!input) return;
+		e.preventDefault();
+		if (document.activeElement && document.activeElement.blur) {
+			document.activeElement.blur();
 		}
-		
-		if (e.repeat) return; //* if held down, do nothing
-		if (input) {
-			window.ZZStats?.onKeyDown(input);
-			switch (input) {  // handles non-movement keys
-				case 'SD':
-					softDrop();
-					break;
-				case 'HD':
-					hardDrop();
-					break;
-				case 'HL':
-					hold();
-					break;
-				case 'CW':
-					rotate('CW');
-					break;
-				case 'CCW':
-					rotate('CCW');
-					break;
-				case 'R180':
-					rotate('R180');
-					break;
-				case 'RE':
-					restart();
-					break;
-				case 'UNDO':
-					undo();
-					break;
-				case 'REDO':
-					redo();
-					break;
-				case 'RESET_SESSION':
-					window.ZZStats?.resetSession();
-					break;
-				case 'RESET_QUEUE':
-					window.ZZStats?.resetQueue();
-					break;
-				case 'RESET_QUEUE_HOLD':
-					window.ZZStats?.resetQueueHold();
-					break;
-			}
+		if (e.repeat) return;
+		if (!pressKeyboardBinding(binding, input, e.code)) return;
+		switch (input) {  // handles non-movement keys
+			case 'SD':
+				softDrop();
+				break;
+			case 'HD':
+				hardDrop();
+				break;
+			case 'HL':
+				hold();
+				break;
+			case 'CW':
+				rotate('CW');
+				break;
+			case 'CCW':
+				rotate('CCW');
+				break;
+			case 'R180':
+				rotate('R180');
+				break;
+			case 'RE':
+				restart();
+				break;
+			case 'UNDO':
+				undo();
+				break;
+			case 'REDO':
+				redo();
+				break;
+			case 'RESET_SESSION':
+				window.ZZStats?.resetSession();
+				break;
+			case 'RESET_QUEUE':
+				window.ZZStats?.resetQueue();
+				break;
+			case 'RESET_QUEUE_HOLD':
+				window.ZZStats?.resetQueueHold();
+				break;
 		}
 	});
 
@@ -3915,18 +4002,19 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			return;
 		}
 		if (zzPaused) return;
-		const input = ctrl[e.code];
-		if (input) {
-			if (document.activeElement && document.activeElement.blur) {
-				document.activeElement.blur();
-			}
-			if (keysDown & flags[input]) keysDown ^= flags[input];
-			window.ZZStats?.onKeyUp(input);
-			// remove key from keysDown
-			if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
-				dasID++;
-			}
-		}
+		releaseBindingsForEvent(e);
+	});
+
+	// Tabbing away or losing focus can swallow a keyup. Release everything so
+	// movement and soft drop do not stay stuck.
+	window.addEventListener('blur', () => {
+		activeBindings.clear();
+		keysDown = 0;
+		lastKeys = 0;
+		dasID++;
+		stopShift();
+		clearActive();
+		setShape();
 	});
 
 	// Shared input API for the mobile shell. It mirrors the keyboard path so
@@ -3935,9 +4023,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		zzPaused = !!value;
 		window.ZZAutoLock?.onPause(zzPaused);
 		if (zzPaused) {
+			activeBindings.clear();
 			keysDown = 0;
 			lastKeys = 0;
 			dasID++;
+			stopShift();
 			clearActive();
 			setShape();
 		}
@@ -3985,6 +4075,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				window.ZZStats?.resetQueueHold();
 				break;
 		}
+		checkShift();
 	}
 
 	function releaseAction(action) {
@@ -3992,6 +4083,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (keysDown & flags[action]) keysDown ^= flags[action];
 		window.ZZStats?.onKeyUp(action);
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) dasID++;
+		checkShift();
 	}
 
 	function tapAction(action) {
@@ -4127,11 +4219,24 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	}
 
 	zzGravityMs = gravity;
+	// Replay practice keeps the captured replay's gravity. Other modes use the
+	// persisted Practice Gravity value, except Grav mode which defines its own.
+	if (window.ZZReplayPractice?.isActive()) {
+		zzGravityMs = window.ZZReplayPractice.getGravityMs?.() ?? zzGravityMs;
+	} else if (typeof mode === 'undefined' || mode !== 'grav') {
+		window.ZZPracticeSettings?.applyGravity();
+	}
 	function gravityLoop() {
 		if (!zzPaused && document.getElementById('grav').checked) move('SD');
 		setTimeout(gravityLoop, Math.max(0, zzGravityMs));
 	}
 	setTimeout(gravityLoop, Math.max(0, zzGravityMs));
+
+	// TETR.IO advances handling once per 60 Hz frame. A dedicated timer keeps
+	// that rate independent of the render rate and avoids replaying a burst
+	// of moves after a slow frame.
+	if (window.__zzHandlingInterval) clearInterval(window.__zzHandlingInterval);
+	window.__zzHandlingInterval = setInterval(handleShiftTick, HANDLING_STEP);
 
 	function playSnd(sfx, overlap) {
 		const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
@@ -4218,23 +4323,76 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (rotated) window.ZZAutoLock?.onMove();
 	}
 
-	function arr(dir) {
-		let loop = setInterval(function () {
-			if (!zzPaused && shiftDir == dir && keysDown & flags[dir]) {
-				move(dir);
-			} else {
-				clearInterval(loop);
-			}
-		}, ARR);
+	// TETR.IO-style horizontal handling. TETR.IO waits DAS, moves once, then
+	// repeats every ARR. JSTRIS instead waits DAS + ARR before the first
+	// repeat; the TETR.IO FAQ gives the conversion
+	// TETR.IO DAS = JSTRIS DAS + JSTRIS ARR.
+	//
+	// The counters run on a dedicated 60 Hz timer because TETR.IO measures
+	// handling in 60 Hz frames. Keeping the state in one place also
+	// means a release or direction change cannot leave an old ARR timer
+	// running and double the movement speed.
+	var shiftDir = null;
+	var shiftCharged = false;
+	var shiftDasFrames = 0;
+	var shiftArrFrames = 0;
+
+	function startShift(dir) {
+		shiftDir = dir;
+		shiftCharged = false;
+		shiftDasFrames = 0;
+		shiftArrFrames = 0;
+		move(dir); // the initial move happens on keydown
 	}
 
-	function das(dir, id) {
-		move(dir);
-		setTimeout(() => {
-			if (dasID == id && !zzPaused) { //* check if das is still valid
-				arr(dir, id);
+	function stopShift() {
+		shiftDir = null;
+		shiftCharged = false;
+		shiftDasFrames = 0;
+		shiftArrFrames = 0;
+	}
+
+	function moveToWall(dir) {
+		let moved = true;
+		while (moved) {
+			const before = xPOS;
+			move(dir);
+			moved = xPOS !== before;
+		}
+	}
+
+	function handleShiftTick() {
+		if (zzPaused || !shiftDir) return;
+		if (!(keysDown & flags[shiftDir])) {
+			stopShift();
+			return;
+		}
+		// TETR.IO stores handling in 60 Hz frames even though the UI shows
+		// milliseconds. Round the configured ms values the same way.
+		const dasFrames = Math.max(0, Math.round(DAS / HANDLING_STEP));
+		const arrFrames = Math.max(0, Math.round(ARR / HANDLING_STEP));
+		if (!shiftCharged) {
+			shiftDasFrames++;
+			if (shiftDasFrames >= dasFrames) {
+				shiftCharged = true;
+				shiftArrFrames = 0;
+				if (arrFrames === 0) {
+					moveToWall(shiftDir);
+				} else {
+					move(shiftDir); // first repeat at DAS
+				}
 			}
-		}, DAS);
+			return;
+		}
+		if (arrFrames === 0) {
+			moveToWall(shiftDir);
+			return;
+		}
+		shiftArrFrames++;
+		if (shiftArrFrames >= arrFrames) {
+			shiftArrFrames -= arrFrames;
+			move(shiftDir);
+		}
 	}
 
 	function softDrop() {
@@ -4272,34 +4430,42 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 	}
 
-	var shiftDir; //* which direction key is on top
-
 	function checkShift() {
-		// moving left/right with DAS and whatever
+		// Start/stop/switch the active horizontal direction. The DAS/ARR
+		// timing itself is handled by handleShiftTick() on the 60 Hz tick.
 		if (zzPaused) {
 			lastKeys = keysDown;
 			return;
 		}
 
-		if (keysDown & flags.L && !(lastKeys & flags.L)) {
-			// just pressed left
-			das('L', dasID);
-			shiftDir = 'L';
-		} else if (!(keysDown & flags.R) && lastKeys & flags.R && keysDown & flags.L) {
-			// just released right and holding left
-			if (shiftDir != 'L') das('L', dasID);
-			shiftDir = 'L';
+		const left = !!(keysDown & flags.L);
+		const right = !!(keysDown & flags.R);
+		const lastLeft = !!(lastKeys & flags.L);
+		const lastRight = !!(lastKeys & flags.R);
+		let started = false;
+
+		if (left && !lastLeft) {
+			startShift('L');
+			started = true;
 		}
-		if (keysDown & flags.R && !(lastKeys & flags.R)) {
-			// just pressed right
-			das('R', dasID);
-			shiftDir = 'R';
-		} else if (!(keysDown & flags.L) && lastKeys & flags.L && keysDown & flags.R) {
+		if (right && !lastRight) {
+			startShift('R');
+			started = true;
+		}
+		if (!started && !left && right && lastLeft && shiftDir !== 'R') {
 			// just released left and holding right
-			if (shiftDir != 'R') das('R', dasID);
-			shiftDir = 'R';
-		} 
-		
+			startShift('R');
+			started = true;
+		}
+		if (!started && left && !right && lastRight && shiftDir !== 'L') {
+			// just released right and holding left
+			startShift('L');
+			started = true;
+		}
+		if (!started && !left && !right && (lastLeft || lastRight)) {
+			stopShift();
+		}
+
 		if (lastKeys !== keysDown) {
 			lastKeys = keysDown;
 		}

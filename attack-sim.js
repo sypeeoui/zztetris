@@ -16,6 +16,14 @@
 	const MIN_INTERVAL = 50;
 	const FIRST_ATTACK_DELAY = 1000;
 	const WELL_MODES = new Set(['4w', '4w4res', '4w5res', '4w6res', '3w']);
+	const DEFAULT_SETTINGS = {
+		enabled: false,
+		apm: 30,
+		messiness: 0,
+		timeRandom: 0,
+		sizeRandom: 0,
+		holeMessiness: 0,
+	};
 
 	let enabled = false;
 	let queue = null;
@@ -101,6 +109,30 @@
 		setValue('simulateAttackSizeRandom', settings.sizeRandom);
 		setValue('simulateAttackHoleMessiness', settings.holeMessiness);
 		updateValueDisplays();
+	}
+
+	// Apply settings that came from storage (initial load or an import in the
+	// settings popup) without re-saving them.
+	function applyLoadedSettings(settings) {
+		const next = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+		applySettingsToUi(next);
+		const wasEnabled = enabled;
+		enabled = !!next.enabled;
+		if (!queue) createQueue();
+		applyHoleMessiness();
+		if (enabled) {
+			if (!wasEnabled) {
+				queue.reset();
+				nextCid = 1;
+			}
+			scheduleNext(wasEnabled ? 0 : FIRST_ATTACK_DELAY);
+		} else {
+			clearTimeout(timer);
+			timer = null;
+			if (queue) queue.reset();
+		}
+		updateValueDisplays();
+		updateMeter();
 	}
 
 	function updateValueDisplays() {
@@ -356,15 +388,13 @@
 			console.warn('attack simulator unavailable: addGarbageRows missing');
 			return;
 		}
-		const saved = loadSettings();
-		if (saved) applySettingsToUi(saved);
 		bindUi();
 		createQueue();
-		applyHoleMessiness();
-		updateValueDisplays();
-		updateMeter();
-		enabled = !!saved?.enabled;
-		if (enabled) scheduleNext(FIRST_ATTACK_DELAY);
+		applyLoadedSettings(loadSettings() || DEFAULT_SETTINGS);
+		window.addEventListener('storage', (event) => {
+			if (event.key !== STORAGE_KEY && event.key !== null) return;
+			applyLoadedSettings(loadSettings() || DEFAULT_SETTINGS);
+		});
 	}
 
 	root.ZZAttackSim = {

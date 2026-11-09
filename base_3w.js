@@ -5,7 +5,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=168c48ca', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=0178b503', 'popup', 'width=1200,height=800');
 	var reloading = false;
 
 	setInterval(() => {
@@ -627,6 +627,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 	keysDown = 0;
 	lastKeys = 0;
+	var HANDLING_STEP = 1000 / 60;
 
 	document.getElementById('tc-un').addEventListener('touchstart', function (e) {
 		input = 'UNDO';
@@ -684,6 +685,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	document.getElementById('tc-r').addEventListener('touchstart', function (e) {
 		input = 'R';
 		keysDown |= flags[input];
+		checkShift();
 	});
 
 	document.getElementById('tc-r').addEventListener('touchend', function (e) {
@@ -692,11 +694,13 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
+		checkShift();
 	});
 
 	document.getElementById('tc-l').addEventListener('touchstart', function (e) {
 		input = 'L';
 		keysDown |= flags[input];
+		checkShift();
 	});
 
 	document.getElementById('tc-l').addEventListener('touchend', function (e) {
@@ -705,6 +709,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 			dasID++;
 		}
+		checkShift();
 	});
 
 
@@ -714,6 +719,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (input) keysDown |= flags[input]; //* sets key in keysDown
 		if (e.repeat) return; //* if held down, do nothing
 		if (input) {
+			checkShift();
 			switch (input) {  // handles non-movement keys
 				case 'SD':
 					softDrop();
@@ -754,6 +760,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			if (!(keysDown & flags.L) && !(keysDown & flags.R)) {
 				dasID++;
 			}
+			checkShift();
 		}
 	});
 
@@ -827,6 +834,12 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (document.getElementById('grav').checked) move('SD');
 	}, gravity);
 
+	// TETR.IO advances handling once per 60 Hz frame. A dedicated timer keeps
+	// that rate independent of the render rate and avoids replaying a burst
+	// of moves after a slow frame.
+	if (window.__zzHandlingInterval) clearInterval(window.__zzHandlingInterval);
+	window.__zzHandlingInterval = setInterval(handleShiftTick, HANDLING_STEP);
+
 	function playSnd(sfx, overlap) {
 		const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
 		if (overlap) {
@@ -890,23 +903,76 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		setShape();
 	}
 
-	function arr(dir) {
-		let loop = setInterval(function () {
-			if (shiftDir == dir && keysDown & flags[dir]) {
-				move(dir);
-			} else {
-				clearInterval(loop);
-			}
-		}, ARR);
+	// TETR.IO-style horizontal handling. TETR.IO waits DAS, moves once, then
+	// repeats every ARR. JSTRIS instead waits DAS + ARR before the first
+	// repeat; the TETR.IO FAQ gives the conversion
+	// TETR.IO DAS = JSTRIS DAS + JSTRIS ARR.
+	//
+	// The counters run on a dedicated 60 Hz timer because TETR.IO measures
+	// handling in 60 Hz frames. Keeping the state in one place also
+	// means a release or direction change cannot leave an old ARR timer
+	// running and double the movement speed.
+	var shiftDir = null;
+	var shiftCharged = false;
+	var shiftDasFrames = 0;
+	var shiftArrFrames = 0;
+
+	function startShift(dir) {
+		shiftDir = dir;
+		shiftCharged = false;
+		shiftDasFrames = 0;
+		shiftArrFrames = 0;
+		move(dir); // the initial move happens on keydown
 	}
 
-	function das(dir, id) {
-		move(dir);
-		setTimeout(() => {
-			if (dasID == id) { //* check if das is still valid
-				arr(dir, id);
+	function stopShift() {
+		shiftDir = null;
+		shiftCharged = false;
+		shiftDasFrames = 0;
+		shiftArrFrames = 0;
+	}
+
+	function moveToWall(dir) {
+		let moved = true;
+		while (moved) {
+			const before = xPOS;
+			move(dir);
+			moved = xPOS !== before;
+		}
+	}
+
+	function handleShiftTick() {
+		if (!shiftDir) return;
+		if (!(keysDown & flags[shiftDir])) {
+			stopShift();
+			return;
+		}
+		// TETR.IO stores handling in 60 Hz frames even though the UI shows
+		// milliseconds. Round the configured ms values the same way.
+		const dasFrames = Math.max(0, Math.round(DAS / HANDLING_STEP));
+		const arrFrames = Math.max(0, Math.round(ARR / HANDLING_STEP));
+		if (!shiftCharged) {
+			shiftDasFrames++;
+			if (shiftDasFrames >= dasFrames) {
+				shiftCharged = true;
+				shiftArrFrames = 0;
+				if (arrFrames === 0) {
+					moveToWall(shiftDir);
+				} else {
+					move(shiftDir); // first repeat at DAS
+				}
 			}
-		}, DAS);
+			return;
+		}
+		if (arrFrames === 0) {
+			moveToWall(shiftDir);
+			return;
+		}
+		shiftArrFrames++;
+		if (shiftArrFrames >= arrFrames) {
+			shiftArrFrames -= arrFrames;
+			move(shiftDir);
+		}
 	}
 
 	function softDrop() {
@@ -933,30 +999,37 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 	}
 
-	var shiftDir; //* which direction key is on top
-
 	function checkShift() {
-		// moving left/right with DAS and whatever
+		// Start/stop/switch the active horizontal direction. The DAS/ARR
+		// timing itself is handled by handleShiftTick() on the 60 Hz tick.
+		const left = !!(keysDown & flags.L);
+		const right = !!(keysDown & flags.R);
+		const lastLeft = !!(lastKeys & flags.L);
+		const lastRight = !!(lastKeys & flags.R);
+		let started = false;
 
-		if (keysDown & flags.L && !(lastKeys & flags.L)) {
-			// just pressed left
-			das('L', dasID);
-			shiftDir = 'L';
-		} else if (!(keysDown & flags.R) && lastKeys & flags.R && keysDown & flags.L) {
-			// just released right and holding left
-			if (shiftDir != 'L') das('L', dasID);
-			shiftDir = 'L';
+		if (left && !lastLeft) {
+			startShift('L');
+			started = true;
 		}
-		if (keysDown & flags.R && !(lastKeys & flags.R)) {
-			// just pressed right
-			das('R', dasID);
-			shiftDir = 'R';
-		} else if (!(keysDown & flags.L) && lastKeys & flags.L && keysDown & flags.R) {
+		if (right && !lastRight) {
+			startShift('R');
+			started = true;
+		}
+		if (!started && !left && right && lastLeft && shiftDir !== 'R') {
 			// just released left and holding right
-			if (shiftDir != 'R') das('R', dasID);
-			shiftDir = 'R';
-		} 
-		
+			startShift('R');
+			started = true;
+		}
+		if (!started && left && !right && lastRight && shiftDir !== 'L') {
+			// just released right and holding left
+			startShift('L');
+			started = true;
+		}
+		if (!started && !left && !right && (lastLeft || lastRight)) {
+			stopShift();
+		}
+
 		if (lastKeys !== keysDown) {
 			lastKeys = keysDown;
 		}
