@@ -908,28 +908,32 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	// repeat; the TETR.IO FAQ gives the conversion
 	// TETR.IO DAS = JSTRIS DAS + JSTRIS ARR.
 	//
-	// The counters run on a dedicated 60 Hz timer because TETR.IO measures
-	// handling in 60 Hz frames. Keeping the state in one place also
-	// means a release or direction change cannot leave an old ARR timer
-	// running and double the movement speed.
+	// The tick still runs at 60 Hz, but elapsed time is measured from the
+	// keydown timestamp. Counting ticks alone fired DAS up to one frame early
+	// because the first tick after keydown could be almost immediate
+	// (DAS 83 ms could complete in ~67 ms).
+	//
+	// TETR.IO stores handling in frames and allows fractional values. ARR is
+	// kept as milliseconds here so ARR 2 ms behaves like TETR.IO's 0.12F
+	// instead of being rounded down to "instant" 0 frames.
 	var shiftDir = null;
 	var shiftCharged = false;
-	var shiftDasFrames = 0;
-	var shiftArrFrames = 0;
+	var shiftStartTime = 0;
+	var shiftArrTime = 0;
 
 	function startShift(dir) {
 		shiftDir = dir;
 		shiftCharged = false;
-		shiftDasFrames = 0;
-		shiftArrFrames = 0;
+		shiftStartTime = performance.now();
+		shiftArrTime = shiftStartTime;
 		move(dir); // the initial move happens on keydown
 	}
 
 	function stopShift() {
 		shiftDir = null;
 		shiftCharged = false;
-		shiftDasFrames = 0;
-		shiftArrFrames = 0;
+		shiftStartTime = 0;
+		shiftArrTime = 0;
 	}
 
 	function moveToWall(dir) {
@@ -941,38 +945,45 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 	}
 
-	function handleShiftTick() {
+	function handleShiftTick(now) {
 		if (!shiftDir) return;
 		if (!(keysDown & flags[shiftDir])) {
 			stopShift();
 			return;
 		}
-		// TETR.IO stores handling in 60 Hz frames even though the UI shows
-		// milliseconds. Round the configured ms values the same way.
-		const dasFrames = Math.max(0, Math.round(DAS / HANDLING_STEP));
-		const arrFrames = Math.max(0, Math.round(ARR / HANDLING_STEP));
+		if (typeof now !== 'number') now = performance.now();
+		const das = Math.max(0, DAS);
+		const arr = Math.max(0, ARR);
+
 		if (!shiftCharged) {
-			shiftDasFrames++;
-			if (shiftDasFrames >= dasFrames) {
-				shiftCharged = true;
-				shiftArrFrames = 0;
-				if (arrFrames === 0) {
-					moveToWall(shiftDir);
-				} else {
-					move(shiftDir); // first repeat at DAS
-				}
+			if (now - shiftStartTime < das) return;
+			shiftCharged = true;
+			// ARR starts from the exact DAS deadline, so a late tick does not
+			// lose the auto-repeat time that elapsed during that tick.
+			shiftArrTime = shiftStartTime + das;
+			if (arr === 0) {
+				moveToWall(shiftDir);
+				return;
 			}
-			return;
+			move(shiftDir); // first repeat at DAS
 		}
-		if (arrFrames === 0) {
+
+		if (arr === 0) {
 			moveToWall(shiftDir);
 			return;
 		}
-		shiftArrFrames++;
-		if (shiftArrFrames >= arrFrames) {
-			shiftArrFrames -= arrFrames;
-			move(shiftDir);
+
+		const elapsed = now - shiftArrTime;
+		if (elapsed < arr) return;
+		let moves = Math.floor(elapsed / arr);
+		shiftArrTime += moves * arr;
+		// A throttled background tab should not replay thousands of moves.
+		const maxMoves = boardSize[0] + 1;
+		if (moves > maxMoves) {
+			moves = maxMoves;
+			shiftArrTime = now;
 		}
+		for (let i = 0; i < moves; i++) move(shiftDir);
 	}
 
 	function softDrop() {
