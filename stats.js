@@ -267,6 +267,12 @@
 		if (typeof shuffleQueuePlusHold === 'function') shuffleQueuePlusHold();
 	}
 
+	// Full reset: board, queue, hold and session stats. restart() already
+	// resets all of them (and the attack sim) through ZZStats.onRestart().
+	function resetEverything() {
+		if (typeof restart === 'function') restart();
+	}
+
 	function addGarbageReceived(lines) {
 		const amount = Math.max(0, Math.floor(Number(lines) || 0));
 		if (amount > 0) state.garbageReceived += amount;
@@ -305,8 +311,7 @@
 	function wireResetButtons() {
 		const bindings = [
 			['resetSessionBtn', resetSession],
-			['resetQueueBtn', resetQueue],
-			['resetQueueHoldBtn', resetQueueHold],
+			['resetEverythingBtn', resetEverything],
 		];
 		for (const [id, handler] of bindings) {
 			const button = document.getElementById(id);
@@ -359,6 +364,7 @@
 		resetSession,
 		resetQueue,
 		resetQueueHold,
+		resetEverything,
 		refreshConfig,
 		getState: () => state,
 		getAttackDisplay,

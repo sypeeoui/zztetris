@@ -658,6 +658,16 @@ html.mobile .zzSheetBtn--active {
 	background: #1f3320;
 }
 
+html.mobile .zzSheetBtnRow {
+	display: flex;
+	gap: 9px;
+}
+
+html.mobile .zzSheetBtnRow .zzSheetBtn {
+	flex: 1;
+	justify-content: center;
+}
+
 html.mobile .zzSheetRow {
 	display: flex;
 	align-items: center;

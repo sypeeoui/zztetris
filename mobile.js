@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-b1f86ba6';
+	const SW_CACHE_VERSION = 'zztetris-mobile-53ff08d5';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -794,6 +794,10 @@
 			'<div class="zzSheet">' +
 			'<div class="zzSheetHeader"><h2>Paused</h2><button class="zzClose" data-close>×</button></div>' +
 			'<button class="zzSheetBtn" data-action="resume">Resume</button>' +
+			'<div class="zzSheetBtnRow">' +
+			'<button class="zzSheetBtn" data-action="undo">Undo</button>' +
+			'<button class="zzSheetBtn" data-action="redo">Redo</button>' +
+			'</div>' +
 			'<button class="zzSheetBtn" data-action="restart">Reset Board</button>' +
 			'<button class="zzSheetBtn" data-action="board">Board</button>' +
 			'<button class="zzSheetBtn" data-action="queue">Queue</button>' +
@@ -803,6 +807,12 @@
 		document.body.appendChild(overlay);
 		overlay.querySelector('[data-close]').addEventListener('click', closePause);
 		overlay.querySelector('[data-action="resume"]').addEventListener('click', closePause);
+		overlay.querySelector('[data-action="undo"]').addEventListener('click', () => {
+			if (typeof undo === 'function') undo();
+		});
+		overlay.querySelector('[data-action="redo"]').addEventListener('click', () => {
+			if (typeof redo === 'function') redo();
+		});
 		overlay.querySelector('[data-action="restart"]').addEventListener('click', () => {
 			closePause();
 			if (typeof restart === 'function') restart();
