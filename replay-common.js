@@ -779,8 +779,10 @@
 	}
 
 	class StatsTracker {
-		constructor(engine) {
+		constructor(engine, options = {}) {
 			this.engine = engine;
+			this.onClear = options.onClear || null;
+			this.onGarbage = options.onGarbage || null;
 			this.state = root.ZZStatsCore.createState(0);
 			this.state.lastAttack = 0;
 			this.finesseTable = null;
@@ -793,17 +795,27 @@
 				fallingNew: (event) => this.onFallingNew(event),
 				lockPre: () => this.onLockPre(),
 				lock: (res) => this.onLock(res),
-				garbageTank: () => this.onGarbageChange(),
+				garbageReceive: (event) => this.onGarbageEvent('receive', event),
+				garbageTank: (event) => {
+					this.onGarbageChange();
+					this.onGarbageEvent('tank', event);
+				},
 				garbageCancel: (event) => {
 					this.onGarbageChange();
 					this.onGarbageCancel(event);
+					this.onGarbageEvent('cancel', event);
 				},
 			};
 			engine.events.on('falling.new', this.handlers.fallingNew);
 			engine.events.on('falling.lock.pre', this.handlers.lockPre);
 			engine.events.on('falling.lock', this.handlers.lock);
+			engine.events.on('garbage.receive', this.handlers.garbageReceive);
 			engine.events.on('garbage.tank', this.handlers.garbageTank);
 			engine.events.on('garbage.cancel', this.handlers.garbageCancel);
+		}
+
+		onGarbageEvent(type, event) {
+			if (this.onGarbage) this.onGarbage(type, event);
 		}
 
 		destroy() {
@@ -811,6 +823,7 @@
 			events.off('falling.new', this.handlers.fallingNew);
 			events.off('falling.lock.pre', this.handlers.lockPre);
 			events.off('falling.lock', this.handlers.lock);
+			events.off('garbage.receive', this.handlers.garbageReceive);
 			events.off('garbage.tank', this.handlers.garbageTank);
 			events.off('garbage.cancel', this.handlers.garbageCancel);
 		}
@@ -899,6 +912,9 @@
 			this.state.softDropExempt = this.lockSoftDropExempt;
 			root.ZZStatsCore.applyPlacement(this.state, info, this.finesseTable);
 			this.state.softDropExempt = false;
+			if (this.onClear) {
+				this.onClear(info, root.ZZStatsCore.computeAttack(info));
+			}
 			const stats = res.stats || {};
 			const garbage = stats.garbage || {};
 			this.state.lastAttack = (res.rawGarbage || []).reduce(
@@ -1002,7 +1018,7 @@
 		}
 	}
 
-	function createRoundEngines(round) {
+	function createRoundEngines(round, options = {}) {
 		return round.players.map((player) => {
 			const engine = new root.ZZReplayEngine.Engine(player.engineConfig);
 			if (player.solo) {
@@ -1020,7 +1036,14 @@
 					engine.garbageQueue.options.messiness.within = messiness;
 				}
 			}
-			const tracker = new StatsTracker(engine);
+			const tracker = new StatsTracker(engine, {
+				onClear: options.onClear
+					? (info, attack) => options.onClear(player, info, attack)
+					: null,
+				onGarbage: options.onGarbage
+					? (type, event) => options.onGarbage(player, type, event)
+					: null,
+			});
 			if (player.solo?.full?.data?.stats) {
 				tracker.applyInitialStats(player.solo.full.data.stats);
 			}
@@ -1040,6 +1063,9 @@
 				maxFrame,
 				soloGravity,
 				soloSurvival,
+				onAction: options.onAction
+					? (action) => options.onAction(player, action)
+					: null,
 			};
 		});
 	}
@@ -1055,7 +1081,38 @@
 			if (soloSurvival) soloSurvival(engine, engine.frame);
 			const frameEvents = frames[engine.frame] || [];
 			for (const event of frameEvents) tracker.onKeyEvent(event);
+			const before = engine.falling
+				? {
+						x: engine.falling.x,
+						y: engine.falling.y,
+						rot: engine.falling.rotation,
+						held: engine.held,
+					}
+				: null;
 			engine.tick(frameEvents);
+			const after = engine.falling
+				? {
+						x: engine.falling.x,
+						y: engine.falling.y,
+						rot: engine.falling.rotation,
+						held: engine.held,
+					}
+				: null;
+			if (entry.onAction) {
+				if (before && after) {
+					if (before.held !== after.held) entry.onAction('hold');
+					else if (before.rot !== after.rot) entry.onAction('rotate');
+					else if (before.x !== after.x) entry.onAction('move');
+				}
+				for (const event of frameEvents) {
+					if (event.type !== 'keydown' || !event.data) continue;
+					if (event.data.key === 'hardDrop') {
+						entry.onAction('harddrop');
+					} else if (event.data.key === 'softDrop') {
+						entry.onAction('softdrop');
+					}
+				}
+			}
 		}
 	}
 
@@ -1368,22 +1425,35 @@
 		}
 	}
 
-	function renderQueue(canvas, engine, count = 5, cellSize = 16, width = cellSize * 4) {
+	function renderQueue(
+		canvas,
+		engine,
+		count = 5,
+		cellSize = 16,
+		width = cellSize * 4,
+		orientation = 'vertical'
+	) {
 		if (!canvas || !engine) return;
+		const horizontal = orientation === 'horizontal';
+		const slotWidth = cellSize * 4;
 		const slotHeight = cellSize * 3;
-		const height = slotHeight * count;
-		if (canvas.width !== width) canvas.width = width;
-		if (canvas.height !== height) canvas.height = height;
+		const canvasWidth = horizontal ? slotWidth * count : width;
+		const canvasHeight = horizontal ? slotHeight : slotHeight * count;
+		if (canvas.width !== canvasWidth) canvas.width = canvasWidth;
+		if (canvas.height !== canvasHeight) canvas.height = canvasHeight;
 		const ctx = canvas.getContext('2d');
-		ctx.clearRect(0, 0, width, height);
+		ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 		const queue = engine.queue.slice(0, count);
 		for (let i = 0; i < queue.length; i++) {
 			const piece = queue[i];
 			const preview = engine.getPreview(piece);
 			if (!preview) continue;
-			const offsetX = (width - preview.w * cellSize) / 2;
-			const offsetY =
-				i * slotHeight + (slotHeight - preview.h * cellSize) / 2;
+			const offsetX = horizontal
+				? i * slotWidth + (slotWidth - preview.w * cellSize) / 2
+				: (canvasWidth - preview.w * cellSize) / 2;
+			const offsetY = horizontal
+				? (slotHeight - preview.h * cellSize) / 2
+				: i * slotHeight + (slotHeight - preview.h * cellSize) / 2;
 			for (const [x, y] of preview.data) {
 				drawCell(
 					ctx,

@@ -4,6 +4,21 @@
 
 	const C = window.ZZReplayCommon;
 	const API = window.ZZReplayApi;
+	const audio = window.ZZReplayAudio
+		? new window.ZZReplayAudio()
+		: {
+				resume() {},
+				setMuted() {},
+				setVolume() {},
+				getSettings() {
+					return { muted: false, volume: 0.7 };
+				},
+				playClear() {},
+				playGarbage() {},
+				playAction() {},
+				updateDanger() {},
+				setSuppressed() {},
+			};
 	const state = {
 		replay: null,
 		fileName: '',
@@ -37,6 +52,10 @@
 			loading: false,
 			requestId: 0,
 		},
+		immersive: false,
+		statsOpen: false,
+		immersiveControlsVisible: false,
+		immersiveHideTimer: null,
 		dirty: true,
 	};
 
@@ -79,10 +98,22 @@
 		replayIdForm: document.getElementById('replayIdForm'),
 		replayIdInput: document.getElementById('replayIdInput'),
 		replayIdBtn: document.getElementById('replayIdBtn'),
-		replayMiniBar: document.getElementById('replayMiniBar'),
-		replayMiniBoard: document.getElementById('replayMiniBoard'),
-		replayMiniName: document.getElementById('replayMiniName'),
-		replayMiniResult: document.getElementById('replayMiniResult'),
+		muteBtn: document.getElementById('muteBtn'),
+		fullscreenBtn: document.getElementById('fullscreenBtn'),
+		replaySidePreview: document.getElementById('replaySidePreview'),
+		replaySideName: document.getElementById('replaySideName'),
+		replaySideResult: document.getElementById('replaySideResult'),
+		replaySideBoard: document.getElementById('replaySideBoard'),
+		replaySideHold: document.getElementById('replaySideHold'),
+		replaySideNext: document.getElementById('replaySideNext'),
+		replaySideGarbage: document.getElementById('replaySideGarbage'),
+		replayImmersiveControls: document.getElementById('replayImmersiveControls'),
+		immersiveExitBtn: document.getElementById('immersiveExitBtn'),
+		immersivePlayBtn: document.getElementById('immersivePlayBtn'),
+		immersiveSeek: document.getElementById('immersiveSeek'),
+		immersiveMuteBtn: document.getElementById('immersiveMuteBtn'),
+		replayVolume: document.getElementById('replayVolume'),
+		replayMute: document.getElementById('replayMute'),
 	};
 
 	const portraitQuery = window.matchMedia('(orientation: portrait)');
@@ -90,6 +121,10 @@
 	function init() {
 		computeLayout();
 		bindEvents();
+		syncAudioSettings();
+		const resumeAudio = () => audio.resume();
+		window.addEventListener('pointerdown', resumeAudio, { once: true });
+		window.addEventListener('keydown', resumeAudio, { once: true });
 		requestAnimationFrame(loop);
 		if (document.documentElement.classList.contains('mobile')) {
 			const back = document.querySelector('.replay-back');
@@ -194,22 +229,56 @@
 			state.speed = Number(els.speedSelect.value) || 1;
 		});
 
-		els.replayMiniBar.addEventListener('click', () => {
-			const inactive = state.entries.find(
-				(entry) => entry.player.id !== state.activePlayerId
-			);
-			if (!inactive) return;
-			state.activePlayerId = inactive.player.id;
-			state.lastStatsUpdate = 0;
-			updatePlayerLayout();
-			state.dirty = true;
-			renderAll();
-			state.dirty = false;
-		});
-		els.replayMiniBar.addEventListener('keydown', (event) => {
+		els.replaySidePreview.addEventListener('click', switchPlayer);
+		els.replaySidePreview.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
-				els.replayMiniBar.click();
+				switchPlayer();
+			}
+		});
+		els.muteBtn.addEventListener('click', () => {
+			audio.setMuted(!audio.getSettings().muted);
+			updateMuteButtons();
+		});
+		els.fullscreenBtn.addEventListener('click', toggleImmersive);
+		els.immersiveExitBtn.addEventListener('click', exitImmersive);
+		els.immersivePlayBtn.addEventListener('click', () => {
+			audio.resume();
+			togglePlay();
+			showImmersiveControls();
+		});
+		els.immersiveSeek.addEventListener('input', () => {
+			pause();
+			seek(Number(els.immersiveSeek.value));
+			showImmersiveControls();
+		});
+		els.immersiveMuteBtn.addEventListener('click', () => {
+			audio.setMuted(!audio.getSettings().muted);
+			updateMuteButtons();
+			showImmersiveControls();
+		});
+		els.replayVolume.addEventListener('input', () => {
+			audio.setVolume(Number(els.replayVolume.value) / 100);
+			updateMuteButtons();
+		});
+		els.replayMute.addEventListener('change', () => {
+			audio.setMuted(els.replayMute.checked);
+			updateMuteButtons();
+		});
+		els.replayView.addEventListener('click', (event) => {
+			if (!state.immersive) return;
+			if (
+				event.target.closest(
+					'button, input, select, .replay-side-preview'
+				)
+			) {
+				return;
+			}
+			toggleImmersiveControls();
+		});
+		document.addEventListener('fullscreenchange', () => {
+			if (!document.fullscreenElement && state.immersive) {
+				exitImmersive({ skipFullscreen: true });
 			}
 		});
 
@@ -265,36 +334,69 @@
 	function computeLayout() {
 		const mobile = document.documentElement.classList.contains('mobile');
 		const portrait = mobile && portraitQuery.matches;
-		let cellSize = 20;
+		const immersive = state.immersive;
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		let cellSize = 24;
 		let holdCell = 20;
 		let queueCount = 6;
 		let queueCell = 20;
+		let queueOrientation = 'vertical';
+		let sidePreview = false;
+		let sidePreviewWidth = 0;
 		if (mobile) {
 			if (portrait) {
+				sidePreview = state.entries.length > 1;
+				sidePreviewWidth = sidePreview ? 80 : 0;
+				holdCell = 12;
+				queueCount = 3;
+				queueCell = 12;
+				queueOrientation = 'horizontal';
+				if (vw < 350) {
+					holdCell = 10;
+					queueCount = 2;
+					queueCell = 10;
+				}
+				const statsHeight = state.statsOpen ? 36 : 0;
+				const reservedHeight = immersive ? 60 : 300 + statsHeight;
+				const reservedWidth = sidePreviewWidth + 6 + 12 + 17;
+				const heightCells = Math.floor((vh - reservedHeight) / 23);
+				const widthCells = Math.floor((vw - reservedWidth) / 10);
 				cellSize = Math.max(
 					8,
-					Math.min(20, Math.floor((window.innerHeight - 420) / 23))
+					Math.min(immersive ? 28 : 22, heightCells, widthCells)
 				);
-				holdCell = 10;
-				queueCount = 3;
-				queueCell = 10;
 			} else {
-				cellSize = Math.max(
-					7,
-					Math.min(14, Math.floor((window.innerHeight - 190) / 23))
-				);
 				holdCell = 8;
 				queueCount = 4;
 				queueCell = 8;
+				queueOrientation = 'vertical';
+				const reservedHeight = immersive ? 60 : 190;
+				const heightCells = Math.floor((vh - reservedHeight) / 23);
+				const widthCells = Math.floor((vw / 2 - 17 - 12) / 10);
+				cellSize = Math.max(
+					7,
+					Math.min(immersive ? 16 : 14, heightCells, widthCells)
+				);
 			}
+		} else {
+			cellSize = immersive ? 28 : 24;
+			holdCell = 20;
+			queueCount = 6;
+			queueCell = 20;
+			queueOrientation = 'vertical';
 		}
 		state.layout = {
 			mobile,
 			portrait,
+			immersive,
 			cellSize,
 			holdCell,
 			queueCount,
 			queueCell,
+			queueOrientation,
+			sidePreview,
+			sidePreviewWidth,
 		};
 	}
 
@@ -328,7 +430,11 @@
 			event.preventDefault();
 			changeSpeed(1);
 		} else if (event.code === 'Escape') {
-			closeStatsSettings();
+			if (state.immersive) {
+				exitImmersive();
+			} else {
+				closeStatsSettings();
+			}
 		}
 	}
 
@@ -587,6 +693,7 @@
 			state.statsConfig = C.loadReplayStatsConfig();
 			state.statsScope = 'all';
 			state.activePlayerId = null;
+			state.statsOpen = false;
 			els.replayError.hidden = true;
 			els.dropZone.hidden = true;
 			els.replayView.hidden = false;
@@ -732,13 +839,22 @@
 		destroyEntries();
 		state.roundIndex = index;
 		const round = state.replay.rounds[index];
-		state.entries = C.createRoundEngines(round);
+		state.entries = C.createRoundEngines(round, {
+			onClear: handleClear,
+			onGarbage: handleGarbage,
+			onAction: handleAction,
+		});
 		state.maxFrame = round.maxFrame;
 		state.keyframes = [];
 		state.currentFrame = 0;
 		computeLayout();
 		buildPlayerGrid();
-		for (const entry of state.entries) C.tickPlayer(entry, 0);
+		audio.setSuppressed(true);
+		try {
+			for (const entry of state.entries) C.tickPlayer(entry, 0);
+		} finally {
+			audio.setSuppressed(false);
+		}
 		state.keyframes.push(C.buildKeyframe(state.entries, 0));
 		state.lastStatsUpdate = 0;
 		updateRoundTabs();
@@ -753,7 +869,7 @@
 		state.entries = [];
 		state.cards.clear();
 		els.playerGrid.innerHTML = '';
-		if (els.replayMiniBar) els.replayMiniBar.hidden = true;
+		if (els.replaySidePreview) els.replaySidePreview.hidden = true;
 	}
 
 	function playerResultLabel(player) {
@@ -788,6 +904,14 @@
 				'winner',
 				player.results?.gameoverreason === 'winner'
 			);
+			const statsToggle = document.createElement('button');
+			statsToggle.type = 'button';
+			statsToggle.className = 'button replay-stats-btn';
+			statsToggle.textContent = 'Stats';
+			statsToggle.addEventListener('click', (event) => {
+				event.stopPropagation();
+				toggleStats();
+			});
 			const practice = document.createElement('button');
 			practice.type = 'button';
 			practice.className = 'button replay-practice-btn';
@@ -798,6 +922,7 @@
 			});
 			header.appendChild(name);
 			header.appendChild(result);
+			header.appendChild(statsToggle);
 			header.appendChild(practice);
 
 			const body = document.createElement('div');
@@ -904,41 +1029,51 @@
 	}
 
 	function updatePlayerLayout() {
-		const { mobile, portrait } = state.layout;
-		const showMini = mobile && portrait && state.entries.length > 1;
+		const { mobile, portrait, sidePreview } = state.layout;
+		const showSide =
+			mobile && portrait && sidePreview && state.entries.length > 1;
 		for (const [id, card] of state.cards) {
 			const active = id === state.activePlayerId;
 			card.element.classList.toggle(
 				'replay-player-card--active',
-				showMini && active
+				showSide && active
 			);
 			card.element.classList.toggle(
 				'replay-player-card--mini',
-				showMini && !active
+				showSide && !active
+			);
+			card.element.classList.toggle(
+				'replay-stats-open',
+				state.statsOpen && active
 			);
 		}
-		if (els.replayMiniBar) {
-			els.replayMiniBar.hidden = !showMini;
+		if (els.replaySidePreview) {
+			els.replaySidePreview.hidden = !showSide;
 		}
-		updateMiniBar();
+		updateSidePreview();
 	}
 
-	function updateMiniBar() {
-		if (!els.replayMiniBar || els.replayMiniBar.hidden) return;
+	function updateSidePreview() {
+		if (!els.replaySidePreview || els.replaySidePreview.hidden) return;
 		const inactive = state.entries.find(
 			(entry) => entry.player.id !== state.activePlayerId
 		);
 		if (!inactive) {
-			els.replayMiniBar.hidden = true;
+			els.replaySidePreview.hidden = true;
 			return;
 		}
-		els.replayMiniName.textContent = inactive.player.username;
-		els.replayMiniResult.textContent = playerResultLabel(inactive.player);
-		C.renderBoard(els.replayMiniBoard, inactive.engine, {
-			cellSize: 3,
+		els.replaySideName.textContent = inactive.player.username;
+		els.replaySideResult.textContent = playerResultLabel(inactive.player);
+		C.renderBoard(els.replaySideBoard, inactive.engine, {
+			cellSize: 6,
 			showGhost: false,
 			showGrid: false,
 		});
+		C.renderHold(els.replaySideHold, inactive.engine, 6, 24, 18);
+		C.renderQueue(els.replaySideNext, inactive.engine, 2, 6, 24, 'vertical');
+		const blocks = inactive.engine.garbageQueue.queue;
+		const total = blocks.reduce((sum, block) => sum + block.amount, 0);
+		els.replaySideGarbage.textContent = String(total);
 	}
 
 	function stepOneFrame() {
@@ -977,16 +1112,21 @@
 			state.dirty = false;
 			return;
 		}
-		if (target < state.currentFrame) {
-			const keyframe = C.findKeyframe(state.keyframes, target);
-			if (keyframe) {
-				C.restoreKeyframe(state.entries, keyframe);
-				state.currentFrame = keyframe.frame;
-			} else {
-				selectRound(state.roundIndex);
+		audio.setSuppressed(true);
+		try {
+			if (target < state.currentFrame) {
+				const keyframe = C.findKeyframe(state.keyframes, target);
+				if (keyframe) {
+					C.restoreKeyframe(state.entries, keyframe);
+					state.currentFrame = keyframe.frame;
+				} else {
+					selectRound(state.roundIndex);
+				}
 			}
+			while (state.currentFrame < target) stepOneFrame();
+		} finally {
+			audio.setSuppressed(false);
 		}
-		while (state.currentFrame < target) stepOneFrame();
 		state.lastStatsUpdate = 0;
 		state.dirty = true;
 		renderAll();
@@ -995,6 +1135,7 @@
 
 	function play() {
 		if (!state.replay) return;
+		audio.resume();
 		if (state.currentFrame >= state.maxFrame) {
 			seek(0);
 		}
@@ -1003,12 +1144,14 @@
 		state.accumulator = 0;
 		state.dirty = true;
 		updatePlayPauseButton();
+		if (state.immersive) scheduleImmersiveHide();
 	}
 
 	function pause() {
 		state.playing = false;
 		state.dirty = true;
 		updatePlayPauseButton();
+		if (state.immersive) showImmersiveControls({ keepVisible: true });
 	}
 
 	function togglePlay() {
@@ -1018,6 +1161,13 @@
 
 	function updatePlayPauseButton() {
 		els.playPauseBtn.textContent = state.playing ? 'Pause' : 'Play';
+		if (els.immersivePlayBtn) {
+			els.immersivePlayBtn.textContent = state.playing ? '⏸' : '▶';
+			els.immersivePlayBtn.setAttribute(
+				'aria-label',
+				state.playing ? 'Pause' : 'Play'
+			);
+		}
 	}
 
 	function loop(now) {
@@ -1049,8 +1199,15 @@
 		const now = performance.now();
 		const updateStats = now - state.lastStatsUpdate > 100;
 		if (updateStats) state.lastStatsUpdate = now;
-		const { mobile, portrait, cellSize, holdCell, queueCount, queueCell } =
-			state.layout;
+		const {
+			mobile,
+			portrait,
+			cellSize,
+			holdCell,
+			queueCount,
+			queueCell,
+			queueOrientation,
+		} = state.layout;
 		for (const entry of state.entries) {
 			const card = state.cards.get(entry.player.id);
 			if (!card) continue;
@@ -1065,7 +1222,8 @@
 				entry.engine,
 				queueCount,
 				queueCell,
-				queueWidth
+				queueWidth,
+				queueOrientation
 			);
 			C.renderHold(
 				card.hold,
@@ -1099,12 +1257,14 @@
 			if (updateStats) {
 				const isFinal = state.currentFrame >= entry.player.frames;
 				if (mobile) {
-					card.compactStats.update(
-						entry.tracker,
-						entry.engine,
-						entry.player.finalStats,
-						isFinal
-					);
+					if (state.statsOpen) {
+						card.compactStats.update(
+							entry.tracker,
+							entry.engine,
+							entry.player.finalStats,
+							isFinal
+						);
+					}
 				} else {
 					card.statsPanel.update(
 						entry.tracker,
@@ -1114,8 +1274,16 @@
 					);
 				}
 			}
+			if (state.playing) {
+				audio.updateDanger(
+					entry.player.id,
+					playerPan(entry.player),
+					entry.engine,
+					isActive && entry.player.alive
+				);
+			}
 		}
-		updateMiniBar();
+		updateSidePreview();
 		updatePlaybackUi();
 	}
 
@@ -1123,6 +1291,10 @@
 		if (!state.replay) return;
 		els.seekSlider.max = String(state.maxFrame);
 		els.seekSlider.value = String(state.currentFrame);
+		if (els.immersiveSeek) {
+			els.immersiveSeek.max = String(state.maxFrame);
+			els.immersiveSeek.value = String(state.currentFrame);
+		}
 		els.timeDisplay.textContent = `${C.formatTime(
 			state.currentFrame / 60
 		)} / ${C.formatTime(state.maxFrame / 60)}`;
@@ -1167,6 +1339,7 @@
 	}
 
 	function openStatsSettings() {
+		syncAudioSettings();
 		els.statsSettings.hidden = false;
 		renderStatsSettings();
 	}
@@ -1257,6 +1430,155 @@
 			}
 			els.statsCheckboxes.appendChild(groupEl);
 		}
+	}
+
+	function switchPlayer() {
+		const inactive = state.entries.find(
+			(entry) => entry.player.id !== state.activePlayerId
+		);
+		if (!inactive) return;
+		state.activePlayerId = inactive.player.id;
+		state.lastStatsUpdate = 0;
+		updatePlayerLayout();
+		state.dirty = true;
+		renderAll();
+		state.dirty = false;
+	}
+
+	function playerPan(player) {
+		if (state.replay?.kind === 'solo') return 0;
+		if (state.layout.mobile && state.layout.portrait) {
+			return player.id === state.activePlayerId ? 0 : 0.35;
+		}
+		const index = state.entries.findIndex(
+			(entry) => entry.player.id === player.id
+		);
+		return index === 0 ? -0.35 : 0.35;
+	}
+
+	function handleClear(player, info, attack) {
+		audio.playClear(playerPan(player), info, attack);
+	}
+
+	function handleGarbage(player, type, event) {
+		audio.playGarbage(playerPan(player), type, event);
+	}
+
+	function handleAction(player, action) {
+		audio.playAction(playerPan(player), action);
+	}
+
+	function toggleStats() {
+		state.statsOpen = !state.statsOpen;
+		computeLayout();
+		updatePlayerLayout();
+		state.dirty = true;
+		renderAll();
+		state.dirty = false;
+	}
+
+	function toggleImmersive() {
+		if (state.immersive) exitImmersive();
+		else enterImmersive();
+	}
+
+	function enterImmersive() {
+		state.immersive = true;
+		document.documentElement.classList.add('replay-immersive');
+		els.replayImmersiveControls.hidden = false;
+		computeLayout();
+		updatePlayerLayout();
+		state.dirty = true;
+		renderAll();
+		state.dirty = false;
+		showImmersiveControls();
+		if (
+			document.documentElement.requestFullscreen &&
+			!document.fullscreenElement
+		) {
+			document.documentElement.requestFullscreen().catch(() => {});
+		}
+	}
+
+	function exitImmersive(options = {}) {
+		state.immersive = false;
+		document.documentElement.classList.remove('replay-immersive');
+		els.replayImmersiveControls.hidden = true;
+		if (state.immersiveHideTimer) {
+			clearTimeout(state.immersiveHideTimer);
+			state.immersiveHideTimer = null;
+		}
+		computeLayout();
+		updatePlayerLayout();
+		state.dirty = true;
+		renderAll();
+		state.dirty = false;
+		if (!options.skipFullscreen && document.fullscreenElement) {
+			document.exitFullscreen().catch(() => {});
+		}
+	}
+
+	function showImmersiveControls(options = {}) {
+		if (!state.immersive) return;
+		els.replayImmersiveControls.classList.add('visible');
+		state.immersiveControlsVisible = true;
+		if (state.immersiveHideTimer) {
+			clearTimeout(state.immersiveHideTimer);
+			state.immersiveHideTimer = null;
+		}
+		if (!options.keepVisible && state.playing) {
+			scheduleImmersiveHide();
+		}
+	}
+
+	function hideImmersiveControls() {
+		if (!state.immersive) return;
+		els.replayImmersiveControls.classList.remove('visible');
+		state.immersiveControlsVisible = false;
+	}
+
+	function scheduleImmersiveHide() {
+		if (state.immersiveHideTimer) clearTimeout(state.immersiveHideTimer);
+		state.immersiveHideTimer = setTimeout(() => {
+			state.immersiveHideTimer = null;
+			if (state.immersive && state.playing) hideImmersiveControls();
+		}, 3000);
+	}
+
+	function toggleImmersiveControls() {
+		if (state.immersiveControlsVisible) hideImmersiveControls();
+		else showImmersiveControls();
+	}
+
+	function updateMuteButtons() {
+		const settings = audio.getSettings();
+		const icon = settings.muted ? '🔇' : '🔊';
+		if (els.muteBtn) {
+			els.muteBtn.textContent = icon;
+			els.muteBtn.setAttribute(
+				'aria-label',
+				settings.muted ? 'Unmute replay sounds' : 'Mute replay sounds'
+			);
+		}
+		if (els.immersiveMuteBtn) {
+			els.immersiveMuteBtn.textContent = icon;
+			els.immersiveMuteBtn.setAttribute(
+				'aria-label',
+				settings.muted ? 'Unmute' : 'Mute'
+			);
+		}
+		if (els.replayMute) els.replayMute.checked = settings.muted;
+	}
+
+	function syncAudioSettings() {
+		const settings = audio.getSettings();
+		if (els.replayVolume) {
+			els.replayVolume.value = String(
+				Math.round(settings.volume * 100)
+			);
+		}
+		if (els.replayMute) els.replayMute.checked = settings.muted;
+		updateMuteButtons();
 	}
 
 	init();

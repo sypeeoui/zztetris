@@ -542,8 +542,154 @@ body {
 	display: none;
 }
 
-.replay-mini-bar {
+.replay-side-preview {
 	display: none;
+}
+
+.replay-play-area {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+.replay-play-area .replay-player-grid {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.replay-icon-btn {
+	min-width: 38px;
+	padding: 6px 8px;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.replay-stats-btn {
+	display: none;
+}
+
+.replay-immersive-controls {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+}
+
+.replay-immersive-controls .replay-immersive-exit {
+	position: absolute;
+	top: calc(8px + env(safe-area-inset-top));
+	right: calc(8px + env(safe-area-inset-right));
+	width: 40px;
+	height: 40px;
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.45);
+	color: #fff;
+	font-size: 18px;
+	pointer-events: auto;
+	opacity: 0.65;
+}
+
+.replay-immersive-controls .replay-immersive-bottom {
+	position: absolute;
+	left: 50%;
+	bottom: calc(10px + env(safe-area-inset-bottom));
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: min(92vw, 560px);
+	padding: 6px 8px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 10px;
+	background: rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.replay-immersive-controls.visible .replay-immersive-bottom {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.replay-immersive-controls .replay-immersive-play,
+.replay-immersive-controls .replay-immersive-mute {
+	width: 40px;
+	height: 40px;
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+	font-size: 16px;
+}
+
+.replay-immersive-controls .replay-immersive-seek {
+	flex: 1;
+	min-width: 0;
+	accent-color: var(--replay-accent);
+}
+
+.replay-settings-sound {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px 0;
+	border-top: 1px solid var(--replay-border);
+	border-bottom: 1px solid var(--replay-border);
+}
+
+.replay-settings-volume {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 12px;
+	color: var(--replay-muted);
+}
+
+.replay-settings-volume input[type='range'] {
+	flex: 1;
+	accent-color: var(--replay-accent);
+}
+
+html.replay-immersive .replay-header,
+html.replay-immersive .replay-match-header,
+html.replay-immersive .replay-round-tabs,
+html.replay-immersive .replay-bottom-dock,
+html.replay-immersive .replay-player-header,
+html.replay-immersive .replay-compact-stats {
+	display: none !important;
+}
+
+html.replay-immersive .replay-main {
+	padding: 0;
+}
+
+html.replay-immersive .replay-view {
+	gap: 0;
+}
+
+html.replay-immersive .replay-play-area {
+	gap: 0;
+}
+
+html.replay-immersive .replay-player-card {
+	border: 0;
+	padding: 0;
+	background: transparent;
+}
+
+html.replay-immersive .replay-player-body {
+	gap: 0;
+}
+
+html.replay-immersive .replay-left-column .replay-session-panel {
+	display: none;
+}
+
+html.replay-immersive .replay-board {
+	border: 0;
+	padding: 0;
 }
 
 .replay-playback-row {

@@ -6,8 +6,8 @@ html.mobile body {
 }
 
 html.mobile .replay-header {
-	gap: 8px;
-	padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+	gap: 6px;
+	padding: calc(6px + env(safe-area-inset-top)) 8px 6px;
 	flex-wrap: nowrap;
 }
 
@@ -20,19 +20,27 @@ html.mobile .replay-back {
 }
 
 html.mobile .replay-header-actions {
-	gap: 6px;
+	gap: 4px;
 	flex-wrap: nowrap;
+	margin-left: auto;
 }
 
 html.mobile .replay-header-actions .button {
-	padding: 6px 8px;
+	padding: 6px 7px;
 	font-size: 11px;
+}
+
+html.mobile .replay-icon-btn {
+	min-width: 34px;
+	padding: 6px 5px;
+	font-size: 15px;
 }
 
 html.mobile .replay-main {
 	padding: 6px;
 }
 
+/* Dropzone */
 html.mobile .replay-dropzone {
 	min-height: auto;
 	padding: 8px 0 24px;
@@ -129,6 +137,7 @@ html.mobile .replay-id-form {
 	margin-top: 8px;
 }
 
+/* Replay view */
 html.mobile .replay-view {
 	gap: 6px;
 	padding-bottom: 0;
@@ -146,7 +155,7 @@ html.mobile .replay-match-title {
 }
 
 html.mobile .replay-match-meta {
-	font-size: 10px;
+	display: none;
 }
 
 html.mobile .replay-match-score {
@@ -167,10 +176,121 @@ html.mobile .replay-round-winner {
 	font-size: 9px;
 }
 
-html.mobile .replay-player-grid {
+/* Play area and side preview */
+html.mobile .replay-play-area {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+html.mobile .replay-play-area .replay-player-grid {
+	flex: 1 1 auto;
+	min-width: 0;
 	display: block;
 }
 
+html.mobile .replay-side-preview {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	width: 80px;
+	flex: 0 0 80px;
+	padding: 4px;
+	border: 1px solid #3d3d3d;
+	border-radius: 6px;
+	background: #181818;
+	cursor: pointer;
+	touch-action: manipulation;
+}
+
+html.mobile .replay-side-preview[hidden] {
+	display: none;
+}
+
+html.mobile .replay-side-header {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1px;
+	width: 100%;
+	min-width: 0;
+}
+
+html.mobile .replay-side-name {
+	font-family: Muro, SLANT, sans-serif;
+	font-size: 11px;
+	letter-spacing: 0.5px;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+html.mobile .replay-side-result {
+	font-size: 8px;
+	color: #9a9a9a;
+}
+
+html.mobile .replay-side-board {
+	width: 60px;
+	height: 138px;
+	image-rendering: pixelated;
+	background: #111;
+	border: 1px solid #333;
+}
+
+html.mobile .replay-side-queues {
+	display: flex;
+	gap: 4px;
+	align-items: flex-start;
+}
+
+html.mobile .replay-side-queue {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	font-size: 8px;
+	color: #9a9a9a;
+}
+
+html.mobile .replay-side-queue canvas {
+	image-rendering: pixelated;
+	background: #111;
+	border: 1px solid #333;
+}
+
+html.mobile #replaySideHold {
+	width: 24px;
+	height: 18px;
+}
+
+html.mobile #replaySideNext {
+	width: 24px;
+	height: 72px;
+}
+
+html.mobile .replay-side-garbage {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	font-size: 8px;
+	color: #9a9a9a;
+}
+
+html.mobile .replay-side-garbage b {
+	font-size: 12px;
+	color: #fff;
+}
+
+html.mobile .replay-side-hint {
+	font-size: 8px;
+	color: #4caf50;
+	text-align: center;
+}
+
+/* Player cards */
 html.mobile .replay-player-card {
 	padding: 4px;
 	gap: 4px;
@@ -186,33 +306,55 @@ html.mobile .replay-player-card--active {
 }
 
 html.mobile .replay-player-header {
-	gap: 6px;
+	gap: 4px;
 	padding-bottom: 4px;
 }
 
 html.mobile .replay-player-name {
-	font-size: 15px;
+	font-size: 14px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 html.mobile .replay-player-result {
+	font-size: 8px;
+	padding: 0 5px;
+	white-space: nowrap;
+}
+
+html.mobile .replay-stats-btn {
+	display: inline-flex;
+	margin-left: auto;
 	font-size: 9px;
-	padding: 0 6px;
+	padding: 3px 6px;
 }
 
 html.mobile .replay-practice-btn {
-	font-size: 10px;
-	padding: 4px 8px;
+	font-size: 9px;
+	padding: 3px 6px;
 }
 
+/* Portrait body: hold/next row above the board */
 html.mobile .replay-player-body {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	grid-template-areas:
+		'hold next'
+		'board board';
 	gap: 4px;
-	flex-wrap: nowrap;
-	align-items: stretch;
+	align-items: center;
 }
 
 html.mobile .replay-left-column {
-	width: 40px;
-	flex: 0 0 40px;
+	grid-area: hold;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	width: auto;
+	flex: none;
 }
 
 html.mobile .replay-left-column .replay-session-panel {
@@ -220,42 +362,66 @@ html.mobile .replay-left-column .replay-session-panel {
 }
 
 html.mobile .replay-left-column .queue {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	width: auto;
 	font-size: 9px;
+	color: #9a9a9a;
 }
 
 html.mobile .replay-left-column .queue hr {
-	margin: 2px 0;
+	display: none;
 }
 
 html.mobile .replay-left-column canvas {
-	width: 100%;
+	width: auto;
 	height: auto;
+	image-rendering: pixelated;
+	background: #111;
+	border: 1px solid #333;
 }
 
 html.mobile .replay-right-column {
-	width: 40px;
-	flex: 0 0 40px;
+	grid-area: next;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	justify-self: end;
+	width: auto;
+	flex: none;
 	font-size: 9px;
+	color: #9a9a9a;
+}
+
+html.mobile .replay-right-column hr {
+	display: none;
 }
 
 html.mobile .replay-right-column canvas {
-	width: 100%;
+	width: auto;
 	height: auto;
+	image-rendering: pixelated;
+	background: #111;
+	border: 1px solid #333;
 }
 
 html.mobile .replay-board-stack {
-	flex: 1 1 auto;
+	grid-area: board;
+	display: flex;
 	justify-content: center;
 	gap: 3px;
 	min-width: 0;
 }
 
 html.mobile .replay-garbage-meter {
-	width: 10px;
+	width: 14px;
 }
 
 html.mobile .replay-garbage-count {
-	font-size: 8px;
+	font-size: 9px;
 	padding-bottom: 2px;
 }
 
@@ -265,11 +431,12 @@ html.mobile .replay-board {
 	max-width: 100%;
 }
 
+/* Compact stats strip, hidden until the Stats button is used */
 html.mobile .replay-compact-stats {
-	display: block;
+	display: none;
 }
 
-html.mobile .replay-compact-stats.session-panel--compact {
+html.mobile .replay-player-card.replay-stats-open .replay-compact-stats {
 	display: flex;
 	align-items: stretch;
 	gap: 4px;
@@ -317,6 +484,7 @@ html.mobile .replay-compact-stats .session-stat-value {
 	color: #fff;
 }
 
+/* Playback */
 html.mobile .replay-bottom-dock {
 	position: sticky;
 	bottom: 0;
@@ -329,57 +497,6 @@ html.mobile .replay-bottom-dock {
 	border: 1px solid #3d3d3d;
 	border-radius: 8px 8px 0 0;
 	backdrop-filter: blur(4px);
-}
-
-html.mobile .replay-mini-bar {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 2px 8px;
-	border-bottom: 1px solid #333;
-	cursor: pointer;
-	touch-action: manipulation;
-}
-
-html.mobile .replay-mini-bar[hidden] {
-	display: none;
-}
-
-html.mobile .replay-mini-board {
-	width: 20px;
-	height: 46px;
-	image-rendering: pixelated;
-	background: #111;
-	border: 1px solid #333;
-	flex: 0 0 auto;
-}
-
-html.mobile .replay-mini-info {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	min-width: 0;
-}
-
-html.mobile .replay-mini-name {
-	font-family: Muro, SLANT, sans-serif;
-	font-size: 12px;
-	letter-spacing: 1px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-html.mobile .replay-mini-result {
-	font-size: 9px;
-	color: #9a9a9a;
-}
-
-html.mobile .replay-mini-hint {
-	margin-left: auto;
-	font-size: 9px;
-	color: #4caf50;
-	white-space: nowrap;
 }
 
 html.mobile .replay-playback {
@@ -401,10 +518,6 @@ html.mobile .replay-playback-row .button {
 	min-width: 34px;
 }
 
-html.mobile .replay-playback-meta {
-	display: none;
-}
-
 html.mobile .replay-playback-seek {
 	gap: 6px;
 }
@@ -424,9 +537,10 @@ html.mobile .replay-select {
 }
 
 html.mobile .replay-playback-meta {
-	font-size: 9px;
+	display: none;
 }
 
+/* Settings */
 html.mobile .replay-settings {
 	padding: 0;
 	align-items: stretch;
@@ -456,8 +570,49 @@ html.mobile .replay-settings-actions .button {
 	padding: 8px 6px;
 }
 
-/* Landscape: both players side by side. */
+/* Immersive mode */
+html.mobile.replay-immersive .replay-main {
+	padding: 0;
+}
+
+html.mobile.replay-immersive .replay-view {
+	gap: 0;
+}
+
+html.mobile.replay-immersive .replay-play-area {
+	gap: 0;
+}
+
+html.mobile.replay-immersive .replay-player-card {
+	border: 0;
+	padding: 0;
+	background: transparent;
+}
+
+html.mobile.replay-immersive .replay-player-body {
+	gap: 0;
+}
+
+html.mobile.replay-immersive .replay-board {
+	border: 0;
+	padding: 0;
+}
+
+html.mobile.replay-immersive .replay-side-preview {
+	border: 0;
+	background: transparent;
+}
+
+html.mobile.replay-immersive .replay-immersive-controls {
+	display: block;
+}
+
+/* Landscape: both players side by side */
 @media (orientation: landscape) {
+	html.mobile .replay-play-area {
+		display: block;
+	}
+
 	html.mobile .replay-player-grid {
 		display: flex;
 		gap: 6px;
@@ -473,21 +628,65 @@ html.mobile .replay-settings-actions .button {
 		display: flex;
 	}
 
-	html.mobile .replay-mini-bar {
+	html.mobile .replay-side-preview {
 		display: none !important;
 	}
 
+	html.mobile .replay-player-body {
+		display: flex;
+		flex-wrap: nowrap;
+		align-items: stretch;
+		gap: 4px;
+	}
+
 	html.mobile .replay-left-column {
+		display: block;
 		width: 30px;
 		flex: 0 0 30px;
+	}
+
+	html.mobile .replay-left-column .queue {
+		display: block;
+		width: 100%;
+		font-size: 9px;
+	}
+
+	html.mobile .replay-left-column .queue hr {
+		display: block;
+		margin: 2px 0;
+	}
+
+	html.mobile .replay-left-column canvas {
+		width: 100%;
+		height: auto;
 	}
 
 	html.mobile .replay-right-column {
+		display: block;
 		width: 30px;
 		flex: 0 0 30px;
+		justify-self: auto;
+	}
+
+	html.mobile .replay-right-column hr {
+		display: block;
+		margin: 2px 0;
+	}
+
+	html.mobile .replay-right-column canvas {
+		width: 100%;
+		height: auto;
+	}
+
+	html.mobile .replay-board-stack {
+		flex: 1 1 auto;
 	}
 
 	html.mobile .replay-compact-stats {
+		display: none !important;
+	}
+
+	html.mobile .replay-stats-btn {
 		display: none;
 	}
 
@@ -497,10 +696,6 @@ html.mobile .replay-settings-actions .button {
 
 	html.mobile .replay-match-title {
 		font-size: 13px;
-	}
-
-	html.mobile .replay-match-meta {
-		display: none;
 	}
 
 	html.mobile .replay-round-tabs {

@@ -23,8 +23,8 @@
 		</script>
 		<link rel="icon" href="./assets/pieceSprite/z.png" />
 		<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=f428c787" />
-		<link rel="stylesheet" type="text/css" href="styles/replay.css?v=af561f31" />
-		<link rel="stylesheet" type="text/css" href="styles/replay-mobile.css?v=76de9055" />
+		<link rel="stylesheet" type="text/css" href="styles/replay.css?v=aa4ebe17" />
+		<link rel="stylesheet" type="text/css" href="styles/replay-mobile.css?v=88c82a6a" />
 	</head>
 	<body>
 		<header class="replay-header">
@@ -34,8 +34,29 @@
 				<button id="loadReplayBtn" class="button" type="button">
 					Load
 				</button>
-				<button id="statsSettingsBtn" class="button" type="button">
-					Stats
+				<button
+					id="statsSettingsBtn"
+					class="button"
+					type="button"
+					aria-label="Stats settings"
+				>
+					⚙
+				</button>
+				<button
+					id="muteBtn"
+					class="button replay-icon-btn"
+					type="button"
+					aria-label="Mute replay sounds"
+				>
+					🔊
+				</button>
+				<button
+					id="fullscreenBtn"
+					class="button replay-icon-btn"
+					type="button"
+					aria-label="Toggle fullscreen"
+				>
+					⛶
 				</button>
 			</div>
 		</header>
@@ -126,27 +147,43 @@
 			<section id="replayView" class="replay-view" hidden>
 				<div id="matchHeader" class="replay-match-header"></div>
 				<div id="roundTabs" class="replay-round-tabs"></div>
-				<div id="playerGrid" class="replay-player-grid"></div>
-				<div class="replay-bottom-dock">
-					<div
-						id="replayMiniBar"
-						class="replay-mini-bar"
+				<div class="replay-play-area">
+					<div id="playerGrid" class="replay-player-grid"></div>
+					<aside
+						id="replaySidePreview"
+						class="replay-side-preview"
 						role="button"
 						tabindex="0"
 						hidden
 					>
-						<canvas
-							id="replayMiniBoard"
-							class="replay-mini-board"
-							width="30"
-							height="69"
-						></canvas>
-						<div class="replay-mini-info">
-							<span id="replayMiniName" class="replay-mini-name"></span>
-							<span id="replayMiniResult" class="replay-mini-result"></span>
+						<div class="replay-side-header">
+							<span id="replaySideName" class="replay-side-name"></span>
+							<span id="replaySideResult" class="replay-side-result"></span>
 						</div>
-						<span class="replay-mini-hint">Tap to switch</span>
-					</div>
+						<canvas
+							id="replaySideBoard"
+							class="replay-side-board"
+							width="60"
+							height="138"
+						></canvas>
+						<div class="replay-side-queues">
+							<div class="replay-side-queue">
+								<span>HOLD</span>
+								<canvas id="replaySideHold" width="24" height="18"></canvas>
+							</div>
+							<div class="replay-side-queue">
+								<span>NEXT</span>
+								<canvas id="replaySideNext" width="24" height="72"></canvas>
+							</div>
+						</div>
+						<div class="replay-side-garbage">
+							<span>GARBAGE</span>
+							<b id="replaySideGarbage">0</b>
+						</div>
+						<span class="replay-side-hint">Tap to switch</span>
+					</aside>
+				</div>
+				<div class="replay-bottom-dock">
 					<div id="playbackBar" class="replay-playback">
 						<div class="replay-playback-row">
 							<button
@@ -224,6 +261,44 @@
 			</section>
 		</main>
 
+		<div id="replayImmersiveControls" class="replay-immersive-controls" hidden>
+			<button
+				id="immersiveExitBtn"
+				class="replay-immersive-exit"
+				type="button"
+				aria-label="Exit fullscreen"
+			>
+				⛶
+			</button>
+			<div class="replay-immersive-bottom">
+				<button
+					id="immersivePlayBtn"
+					class="replay-immersive-play"
+					type="button"
+					aria-label="Play"
+				>
+					▶
+				</button>
+				<input
+					id="immersiveSeek"
+					class="replay-immersive-seek"
+					type="range"
+					min="0"
+					max="0"
+					value="0"
+					step="1"
+				/>
+				<button
+					id="immersiveMuteBtn"
+					class="replay-immersive-mute"
+					type="button"
+					aria-label="Mute"
+				>
+					🔊
+				</button>
+			</div>
+		</div>
+
 		<div id="statsSettings" class="replay-settings" hidden>
 			<div class="replay-settings-panel">
 				<div class="replay-settings-header">
@@ -234,6 +309,16 @@
 					<span>Apply to</span>
 					<select id="statsScope" class="replay-select"></select>
 				</label>
+				<div class="replay-settings-sound">
+					<label class="replay-settings-volume">
+						<span>Replay volume</span>
+						<input id="replayVolume" type="range" min="0" max="100" step="1" />
+					</label>
+					<label class="replay-settings-check">
+						<input id="replayMute" type="checkbox" />
+						<span>Mute replay sounds</span>
+					</label>
+				</div>
 				<div id="statsCheckboxes" class="replay-settings-list"></div>
 				<div class="replay-settings-actions">
 					<button id="statsSelectAllBtn" class="button" type="button">
@@ -251,8 +336,9 @@
 		<script defer src="stats-config.js?v=294eb553"></script>
 		<script defer src="stats-core.js?v=b55729b4"></script>
 		<script defer src="replay-engine.js?v=db2dd99e"></script>
-		<script defer src="replay-common.js?v=1f167657"></script>
+		<script defer src="replay-common.js?v=3aefa415"></script>
 		<script defer src="replay-api.js?v=b9cad92a"></script>
-		<script defer src="replay.js?v=8253d247"></script>
+		<script defer src="replay-audio.js?v=d26c9d5d"></script>
+		<script defer src="replay.js?v=8320c992"></script>
 	</body>
 </html>
