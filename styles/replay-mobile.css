@@ -1,0 +1,524 @@
+/* Mobile replay viewer layout. Every rule is scoped to html.mobile so the
+   desktop viewer keeps its existing layout. */
+
+html.mobile body {
+	min-height: 100dvh;
+}
+
+html.mobile .replay-header {
+	gap: 8px;
+	padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+	flex-wrap: nowrap;
+}
+
+html.mobile .replay-header h1 {
+	display: none;
+}
+
+html.mobile .replay-back {
+	font-size: 12px;
+}
+
+html.mobile .replay-header-actions {
+	gap: 6px;
+	flex-wrap: nowrap;
+}
+
+html.mobile .replay-header-actions .button {
+	padding: 6px 8px;
+	font-size: 11px;
+}
+
+html.mobile .replay-main {
+	padding: 6px;
+}
+
+html.mobile .replay-dropzone {
+	min-height: auto;
+	padding: 8px 0 24px;
+}
+
+html.mobile .replay-dropzone-inner {
+	width: 100%;
+	padding: 16px 12px;
+	border-radius: 10px;
+}
+
+html.mobile .replay-dropzone-inner h2 {
+	font-size: 18px;
+}
+
+html.mobile .replay-search-form {
+	display: flex;
+	gap: 6px;
+}
+
+html.mobile .replay-input {
+	flex: 1;
+	min-width: 0;
+	font-size: 16px; /* prevent iOS zoom on focus */
+	padding: 10px;
+}
+
+html.mobile .replay-search-form .button {
+	padding: 10px 12px;
+	white-space: nowrap;
+}
+
+html.mobile .replay-search-status {
+	margin-top: 8px;
+	font-size: 12px;
+}
+
+html.mobile .replay-user-card {
+	margin-top: 10px;
+	padding: 8px 10px;
+}
+
+html.mobile .replay-mode-tabs {
+	margin-top: 8px;
+	gap: 6px;
+}
+
+html.mobile .replay-mode-tab {
+	flex: 1;
+	padding: 8px 6px;
+	font-size: 12px;
+}
+
+html.mobile .replay-recent-list {
+	margin-top: 8px;
+	max-height: 46dvh;
+}
+
+html.mobile .replay-recent-item {
+	grid-template-columns: auto 1fr auto;
+	grid-template-areas:
+		'mode date action'
+		'detail detail action';
+	gap: 2px 8px;
+	padding: 10px;
+}
+
+html.mobile .replay-recent-mode {
+	grid-area: mode;
+}
+
+html.mobile .replay-recent-date {
+	grid-area: date;
+}
+
+html.mobile .replay-recent-detail {
+	grid-area: detail;
+}
+
+html.mobile .replay-recent-action {
+	grid-area: action;
+	align-self: center;
+}
+
+html.mobile .replay-divider {
+	margin: 14px 0 10px;
+}
+
+html.mobile .replay-dropzone-actions {
+	margin: 10px 0;
+}
+
+html.mobile .replay-id-form {
+	margin-top: 8px;
+}
+
+html.mobile .replay-view {
+	gap: 6px;
+	padding-bottom: 0;
+}
+
+html.mobile .replay-match-header {
+	padding: 6px 8px;
+	gap: 2px 8px;
+	font-size: 11px;
+}
+
+html.mobile .replay-match-title {
+	font-size: 15px;
+	letter-spacing: 1px;
+}
+
+html.mobile .replay-match-meta {
+	font-size: 10px;
+}
+
+html.mobile .replay-match-score {
+	margin-left: 0;
+	font-size: 11px;
+}
+
+html.mobile .replay-round-tabs {
+	gap: 4px;
+}
+
+html.mobile .replay-round-tab {
+	padding: 4px 8px;
+	font-size: 11px;
+}
+
+html.mobile .replay-round-winner {
+	font-size: 9px;
+}
+
+html.mobile .replay-player-grid {
+	display: block;
+}
+
+html.mobile .replay-player-card {
+	padding: 4px;
+	gap: 4px;
+	border-width: 1px;
+}
+
+html.mobile .replay-player-card--mini {
+	display: none;
+}
+
+html.mobile .replay-player-card--active {
+	display: flex;
+}
+
+html.mobile .replay-player-header {
+	gap: 6px;
+	padding-bottom: 4px;
+}
+
+html.mobile .replay-player-name {
+	font-size: 15px;
+}
+
+html.mobile .replay-player-result {
+	font-size: 9px;
+	padding: 0 6px;
+}
+
+html.mobile .replay-practice-btn {
+	font-size: 10px;
+	padding: 4px 8px;
+}
+
+html.mobile .replay-player-body {
+	gap: 4px;
+	flex-wrap: nowrap;
+	align-items: stretch;
+}
+
+html.mobile .replay-left-column {
+	width: 40px;
+	flex: 0 0 40px;
+}
+
+html.mobile .replay-left-column .replay-session-panel {
+	display: none;
+}
+
+html.mobile .replay-left-column .queue {
+	font-size: 9px;
+}
+
+html.mobile .replay-left-column .queue hr {
+	margin: 2px 0;
+}
+
+html.mobile .replay-left-column canvas {
+	width: 100%;
+	height: auto;
+}
+
+html.mobile .replay-right-column {
+	width: 40px;
+	flex: 0 0 40px;
+	font-size: 9px;
+}
+
+html.mobile .replay-right-column canvas {
+	width: 100%;
+	height: auto;
+}
+
+html.mobile .replay-board-stack {
+	flex: 1 1 auto;
+	justify-content: center;
+	gap: 3px;
+	min-width: 0;
+}
+
+html.mobile .replay-garbage-meter {
+	width: 10px;
+}
+
+html.mobile .replay-garbage-count {
+	font-size: 8px;
+	padding-bottom: 2px;
+}
+
+html.mobile .replay-board {
+	padding: 4px;
+	border-width: 1px;
+	max-width: 100%;
+}
+
+html.mobile .replay-compact-stats {
+	display: block;
+}
+
+html.mobile .replay-compact-stats.session-panel--compact {
+	display: flex;
+	align-items: stretch;
+	gap: 4px;
+	overflow-x: auto;
+	padding: 2px 0;
+	-webkit-overflow-scrolling: touch;
+}
+
+html.mobile .replay-compact-stats .session-chain,
+html.mobile .replay-compact-stats .session-stats {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 4px;
+	flex: 0 0 auto;
+	max-height: none;
+	overflow: visible;
+}
+
+html.mobile .replay-compact-stats .session-chain-item,
+html.mobile .replay-compact-stats .session-stat {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	align-self: flex-start;
+	height: auto;
+	min-width: 44px;
+	padding: 3px 5px;
+	border: 1px solid #333;
+	border-radius: 4px;
+	background: #151515;
+}
+
+html.mobile .replay-compact-stats .session-chain-label,
+html.mobile .replay-compact-stats .session-stat-label {
+	font-size: 8px;
+	color: #9a9a9a;
+	white-space: nowrap;
+}
+
+html.mobile .replay-compact-stats .session-chain-value,
+html.mobile .replay-compact-stats .session-stat-value {
+	font-size: 12px;
+	color: #fff;
+}
+
+html.mobile .replay-bottom-dock {
+	position: sticky;
+	bottom: 0;
+	z-index: 15;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-bottom: env(safe-area-inset-bottom);
+	background: rgba(24, 24, 24, 0.97);
+	border: 1px solid #3d3d3d;
+	border-radius: 8px 8px 0 0;
+	backdrop-filter: blur(4px);
+}
+
+html.mobile .replay-mini-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 8px;
+	border-bottom: 1px solid #333;
+	cursor: pointer;
+	touch-action: manipulation;
+}
+
+html.mobile .replay-mini-bar[hidden] {
+	display: none;
+}
+
+html.mobile .replay-mini-board {
+	width: 20px;
+	height: 46px;
+	image-rendering: pixelated;
+	background: #111;
+	border: 1px solid #333;
+	flex: 0 0 auto;
+}
+
+html.mobile .replay-mini-info {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+html.mobile .replay-mini-name {
+	font-family: Muro, SLANT, sans-serif;
+	font-size: 12px;
+	letter-spacing: 1px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+html.mobile .replay-mini-result {
+	font-size: 9px;
+	color: #9a9a9a;
+}
+
+html.mobile .replay-mini-hint {
+	margin-left: auto;
+	font-size: 9px;
+	color: #4caf50;
+	white-space: nowrap;
+}
+
+html.mobile .replay-playback {
+	position: static;
+	border: 0;
+	padding: 3px 6px;
+	background: transparent;
+	backdrop-filter: none;
+}
+
+html.mobile .replay-playback-row {
+	gap: 4px;
+	flex-wrap: nowrap;
+}
+
+html.mobile .replay-playback-row .button {
+	padding: 6px 5px;
+	font-size: 11px;
+	min-width: 34px;
+}
+
+html.mobile .replay-playback-meta {
+	display: none;
+}
+
+html.mobile .replay-playback-seek {
+	gap: 6px;
+}
+
+html.mobile .replay-seek {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+html.mobile .replay-time {
+	font-size: 11px;
+}
+
+html.mobile .replay-select {
+	padding: 6px 4px;
+	font-size: 11px;
+}
+
+html.mobile .replay-playback-meta {
+	font-size: 9px;
+}
+
+html.mobile .replay-settings {
+	padding: 0;
+	align-items: stretch;
+}
+
+html.mobile .replay-settings-panel {
+	width: 100%;
+	max-height: 100dvh;
+	border-radius: 0;
+	padding: 12px;
+	padding-top: calc(12px + env(safe-area-inset-top));
+	padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+html.mobile .replay-settings-list {
+	grid-template-columns: 1fr;
+}
+
+html.mobile .replay-settings-check {
+	font-size: 14px;
+	padding: 6px 0;
+}
+
+html.mobile .replay-settings-actions .button {
+	flex: 1;
+	font-size: 12px;
+	padding: 8px 6px;
+}
+
+/* Landscape: both players side by side. */
+@media (orientation: landscape) {
+	html.mobile .replay-player-grid {
+		display: flex;
+		gap: 6px;
+		align-items: stretch;
+	}
+
+	html.mobile .replay-player-card {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	html.mobile .replay-player-card--mini {
+		display: flex;
+	}
+
+	html.mobile .replay-mini-bar {
+		display: none !important;
+	}
+
+	html.mobile .replay-left-column {
+		width: 30px;
+		flex: 0 0 30px;
+	}
+
+	html.mobile .replay-right-column {
+		width: 30px;
+		flex: 0 0 30px;
+	}
+
+	html.mobile .replay-compact-stats {
+		display: none;
+	}
+
+	html.mobile .replay-match-header {
+		padding: 4px 8px;
+	}
+
+	html.mobile .replay-match-title {
+		font-size: 13px;
+	}
+
+	html.mobile .replay-match-meta {
+		display: none;
+	}
+
+	html.mobile .replay-round-tabs {
+		padding-bottom: 0;
+	}
+
+	html.mobile .replay-round-tab {
+		padding: 2px 6px;
+		font-size: 10px;
+	}
+
+	html.mobile .replay-playback-meta {
+		display: none;
+	}
+
+	html.mobile .replay-playback-row .button {
+		padding: 6px 5px;
+		font-size: 11px;
+		min-width: 34px;
+	}
+}

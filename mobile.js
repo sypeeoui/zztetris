@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-53ff08d5';
+	const SW_CACHE_VERSION = 'zztetris-mobile-ed2392dd';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -794,6 +794,8 @@
 			'<div class="zzSheet">' +
 			'<div class="zzSheetHeader"><h2>Paused</h2><button class="zzClose" data-close>×</button></div>' +
 			'<button class="zzSheetBtn" data-action="resume">Resume</button>' +
+			'<button class="zzSheetBtn" data-action="replay-exit" hidden>Back to replay</button>' +
+			'<button class="zzSheetBtn" data-action="replay-reset" hidden>Reset to replay state</button>' +
 			'<div class="zzSheetBtnRow">' +
 			'<button class="zzSheetBtn" data-action="undo">Undo</button>' +
 			'<button class="zzSheetBtn" data-action="redo">Redo</button>' +
@@ -802,6 +804,7 @@
 			'<button class="zzSheetBtn" data-action="board">Board</button>' +
 			'<button class="zzSheetBtn" data-action="queue">Queue</button>' +
 			'<button class="zzSheetBtn" data-action="settings">Settings</button>' +
+			'<button class="zzSheetBtn" data-action="replay">Replay Viewer</button>' +
 			'<button class="zzSheetBtn zzSheetBtn--danger" data-action="exit">Exit to menu</button>' +
 			'</div>';
 		document.body.appendChild(overlay);
@@ -812,6 +815,31 @@
 		});
 		overlay.querySelector('[data-action="redo"]').addEventListener('click', () => {
 			if (typeof redo === 'function') redo();
+		});
+		const replayPractice = params.get('replayPractice') === '1';
+		const replayExit = overlay.querySelector('[data-action="replay-exit"]');
+		const replayReset = overlay.querySelector('[data-action="replay-reset"]');
+		const replayViewer = overlay.querySelector('[data-action="replay"]');
+		if (replayPractice) {
+			replayExit.hidden = false;
+			replayReset.hidden = false;
+			replayViewer.hidden = true;
+		}
+		replayExit.addEventListener('click', () => {
+			let returnUrl = '';
+			try {
+				returnUrl = sessionStorage.getItem('zztetris_replay_return') || '';
+			} catch (error) {
+				// Storage can be unavailable; fall back to the viewer.
+			}
+			location.href = returnUrl || 'replay.html?mobile=1';
+		});
+		replayReset.addEventListener('click', () => {
+			closePause();
+			window.ZZReplayPractice?.restart();
+		});
+		replayViewer.addEventListener('click', () => {
+			location.href = 'replay.html?mobile=1';
 		});
 		overlay.querySelector('[data-action="restart"]').addEventListener('click', () => {
 			closePause();
@@ -2263,6 +2291,7 @@
 				.join('') +
 			'</div>' +
 			'<button class="zzSheetBtn" data-action="settings">Settings</button>' +
+			'<a class="zzSheetBtn" href="replay.html?mobile=1">Replay Viewer</a>' +
 			'<p class="zzHint">Choose a mode. The game is paused while this menu is open.</p>' +
 			'</div>';
 		document.body.appendChild(overlay);

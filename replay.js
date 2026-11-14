@@ -3,9 +3,11 @@
 	'use strict';
 
 	const C = window.ZZReplayCommon;
+	const API = window.ZZReplayApi;
 	const state = {
 		replay: null,
 		fileName: '',
+		source: null,
 		roundIndex: 0,
 		entries: [],
 		keyframes: [],
@@ -19,6 +21,23 @@
 		statsScope: 'all',
 		cards: new Map(),
 		lastStatsUpdate: 0,
+		activePlayerId: null,
+		layout: {
+			mobile: false,
+			portrait: false,
+			cellSize: 20,
+			holdCell: 20,
+			queueCount: 6,
+			queueCell: 20,
+		},
+		search: {
+			user: null,
+			gamemode: 'league',
+			entries: [],
+			loading: false,
+			requestId: 0,
+		},
+		dirty: true,
 	};
 
 	const els = {
@@ -50,21 +69,55 @@
 		frameDisplay: document.getElementById('frameDisplay'),
 		roundDisplay: document.getElementById('roundDisplay'),
 		replayError: document.getElementById('replayError'),
+		userSearchForm: document.getElementById('userSearchForm'),
+		userSearchInput: document.getElementById('userSearchInput'),
+		userSearchBtn: document.getElementById('userSearchBtn'),
+		userSearchStatus: document.getElementById('userSearchStatus'),
+		userSearchResult: document.getElementById('userSearchResult'),
+		gamemodeTabs: document.getElementById('gamemodeTabs'),
+		recentReplays: document.getElementById('recentReplays'),
+		replayIdForm: document.getElementById('replayIdForm'),
+		replayIdInput: document.getElementById('replayIdInput'),
+		replayIdBtn: document.getElementById('replayIdBtn'),
+		replayMiniBar: document.getElementById('replayMiniBar'),
+		replayMiniBoard: document.getElementById('replayMiniBoard'),
+		replayMiniName: document.getElementById('replayMiniName'),
+		replayMiniResult: document.getElementById('replayMiniResult'),
 	};
 
+	const portraitQuery = window.matchMedia('(orientation: portrait)');
+
 	function init() {
+		computeLayout();
 		bindEvents();
 		requestAnimationFrame(loop);
+		if (document.documentElement.classList.contains('mobile')) {
+			const back = document.querySelector('.replay-back');
+			if (back) back.href = 'index.html?mobile=1&menu=1';
+		}
 		const params = new URLSearchParams(location.search);
-		const url = params.get('replay');
-		if (url) {
-			fetch(url)
+		const replayUrl = params.get('replay');
+		const replayId = params.get('replayId');
+		const user = params.get('user');
+		const mode = params.get('gamemode');
+		if (replayUrl) {
+			fetch(replayUrl)
 				.then((response) => {
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
 					return response.text();
 				})
-				.then((text) => loadReplayText(text, url.split('/').pop() || 'replay.ttrm'))
+				.then((text) =>
+					loadReplayText(text, replayUrl.split('/').pop() || 'replay.ttrm', {
+						type: 'url',
+						url: replayUrl,
+					})
+				)
 				.catch((error) => showError(`Could not load replay URL: ${error.message}`));
+		} else if (replayId) {
+			loadReplayById(replayId);
+		} else if (user) {
+			els.userSearchInput.value = user;
+			searchUser(user, mode);
 		}
 	}
 
@@ -75,16 +128,16 @@
 			const file = els.fileInput.files && els.fileInput.files[0];
 			if (!file) return;
 			const text = await file.text();
-			loadReplayText(text, file.name);
+			loadReplayText(text, file.name, { type: 'file', name: file.name });
 			els.fileInput.value = '';
 		});
 		els.pasteReplayBtn.addEventListener('click', async () => {
 			try {
 				const text = await navigator.clipboard.readText();
-				loadReplayText(text, 'pasted.ttrm');
+				loadReplayText(text, 'pasted.ttrm', { type: 'paste' });
 			} catch (error) {
 				const text = prompt('Paste replay JSON');
-				if (text) loadReplayText(text, 'pasted.ttrm');
+				if (text) loadReplayText(text, 'pasted.ttrm', { type: 'paste' });
 			}
 		});
 
@@ -96,7 +149,24 @@
 			const file = event.dataTransfer?.files?.[0];
 			if (!file) return;
 			const text = await file.text();
-			loadReplayText(text, file.name);
+			loadReplayText(text, file.name, { type: 'file', name: file.name });
+		});
+
+		els.userSearchForm.addEventListener('submit', (event) => {
+			event.preventDefault();
+			searchUser(els.userSearchInput.value);
+		});
+		for (const button of els.gamemodeTabs.querySelectorAll('button')) {
+			button.addEventListener('click', () => {
+				if (state.search.loading) return;
+				state.search.gamemode = button.dataset.mode;
+				updateGamemodeTabs();
+				loadRecent();
+			});
+		}
+		els.replayIdForm.addEventListener('submit', (event) => {
+			event.preventDefault();
+			loadReplayById(els.replayIdInput.value);
 		});
 
 		els.playPauseBtn.addEventListener('click', togglePlay);
@@ -122,6 +192,25 @@
 		});
 		els.speedSelect.addEventListener('change', () => {
 			state.speed = Number(els.speedSelect.value) || 1;
+		});
+
+		els.replayMiniBar.addEventListener('click', () => {
+			const inactive = state.entries.find(
+				(entry) => entry.player.id !== state.activePlayerId
+			);
+			if (!inactive) return;
+			state.activePlayerId = inactive.player.id;
+			state.lastStatsUpdate = 0;
+			updatePlayerLayout();
+			state.dirty = true;
+			renderAll();
+			state.dirty = false;
+		});
+		els.replayMiniBar.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				els.replayMiniBar.click();
+			}
 		});
 
 		els.statsSettingsBtn.addEventListener('click', openStatsSettings);
@@ -157,6 +246,56 @@
 		});
 
 		window.addEventListener('keydown', handleKeydown);
+		window.addEventListener('resize', handleResize);
+		if (portraitQuery.addEventListener) {
+			portraitQuery.addEventListener('change', handleResize);
+		} else if (portraitQuery.addListener) {
+			portraitQuery.addListener(handleResize);
+		}
+	}
+
+	function handleResize() {
+		computeLayout();
+		updatePlayerLayout();
+		state.dirty = true;
+		renderAll();
+		state.dirty = false;
+	}
+
+	function computeLayout() {
+		const mobile = document.documentElement.classList.contains('mobile');
+		const portrait = mobile && portraitQuery.matches;
+		let cellSize = 20;
+		let holdCell = 20;
+		let queueCount = 6;
+		let queueCell = 20;
+		if (mobile) {
+			if (portrait) {
+				cellSize = Math.max(
+					8,
+					Math.min(20, Math.floor((window.innerHeight - 420) / 23))
+				);
+				holdCell = 10;
+				queueCount = 3;
+				queueCell = 10;
+			} else {
+				cellSize = Math.max(
+					7,
+					Math.min(14, Math.floor((window.innerHeight - 190) / 23))
+				);
+				holdCell = 8;
+				queueCount = 4;
+				queueCell = 8;
+			}
+		}
+		state.layout = {
+			mobile,
+			portrait,
+			cellSize,
+			holdCell,
+			queueCount,
+			queueCell,
+		};
 	}
 
 	function handleKeydown(event) {
@@ -210,22 +349,281 @@
 		els.replayView.hidden = true;
 	}
 
-	function loadReplayText(text, name) {
+	function setSearchStatus(message, kind) {
+		const el = els.userSearchStatus;
+		if (!el) return;
+		if (!message) {
+			el.hidden = true;
+			el.textContent = '';
+			el.dataset.kind = '';
+			return;
+		}
+		el.hidden = false;
+		el.textContent = message;
+		el.dataset.kind = kind || '';
+	}
+
+	function setSearchLoading(loading) {
+		state.search.loading = loading;
+		if (els.userSearchBtn) els.userSearchBtn.disabled = loading;
+		if (els.userSearchInput) els.userSearchInput.disabled = loading;
+		if (els.gamemodeTabs) {
+			for (const button of els.gamemodeTabs.querySelectorAll('button')) {
+				button.disabled = loading;
+			}
+		}
+	}
+
+	async function searchUser(name, mode) {
+		const query = String(name || '').trim();
+		if (!query) {
+			setSearchStatus('Enter a TETR.IO username.', 'error');
+			return;
+		}
+		const requestId = ++state.search.requestId;
+		state.search.gamemode =
+			mode && API.GAMEMODES.has(mode) ? mode : 'league';
+		setSearchLoading(true);
+		setSearchStatus('Looking up player…', 'loading');
+		try {
+			const user = await API.getUser(query);
+			if (requestId !== state.search.requestId) return;
+			state.search.user = user;
+			renderUserCard(user);
+			els.gamemodeTabs.hidden = false;
+			updateGamemodeTabs();
+			await loadRecent();
+		} catch (error) {
+			if (requestId !== state.search.requestId) return;
+			state.search.user = null;
+			els.userSearchResult.hidden = true;
+			els.gamemodeTabs.hidden = true;
+			els.recentReplays.hidden = true;
+			setSearchStatus(
+				error.message || 'Could not find that player.',
+				'error'
+			);
+		} finally {
+			if (requestId === state.search.requestId) setSearchLoading(false);
+		}
+	}
+
+	function renderUserCard(user) {
+		els.userSearchResult.hidden = false;
+		els.userSearchResult.innerHTML = '';
+		const name = document.createElement('span');
+		name.className = 'replay-user-name';
+		name.textContent = user.username || user._id;
+		const meta = document.createElement('span');
+		meta.className = 'replay-user-meta';
+		meta.textContent = 'Recent replays';
+		els.userSearchResult.appendChild(name);
+		els.userSearchResult.appendChild(meta);
+	}
+
+	function updateGamemodeTabs() {
+		for (const button of els.gamemodeTabs.querySelectorAll('button')) {
+			button.classList.toggle(
+				'active',
+				button.dataset.mode === state.search.gamemode
+			);
+		}
+	}
+
+	async function loadRecent() {
+		if (!state.search.user) return;
+		const requestId = ++state.search.requestId;
+		setSearchLoading(true);
+		setSearchStatus('Loading recent replays…', 'loading');
+		els.recentReplays.hidden = true;
+		try {
+			const entries = await API.getRecent(
+				state.search.user.username || state.search.user._id,
+				state.search.gamemode
+			);
+			if (requestId !== state.search.requestId) return;
+			state.search.entries = entries;
+			renderRecentList(entries);
+			setSearchStatus(
+				entries.length
+					? ''
+					: `No recent ${gamemodeLabel(
+							state.search.gamemode
+						)} replays found.`,
+				entries.length ? '' : 'empty'
+			);
+		} catch (error) {
+			if (requestId !== state.search.requestId) return;
+			state.search.entries = [];
+			els.recentReplays.hidden = true;
+			setSearchStatus(
+				error.message || 'Could not load recent replays.',
+				'error'
+			);
+		} finally {
+			if (requestId === state.search.requestId) setSearchLoading(false);
+		}
+	}
+
+	function renderRecentList(entries) {
+		els.recentReplays.innerHTML = '';
+		if (!entries.length) {
+			els.recentReplays.hidden = true;
+			return;
+		}
+		els.recentReplays.hidden = false;
+		for (const entry of entries.slice(0, 20)) {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'replay-recent-item';
+			button.dataset.replayId = entry.replayid;
+			const mode = document.createElement('span');
+			mode.className = 'replay-recent-mode';
+			mode.textContent = gamemodeLabel(
+				entry.gamemode || state.search.gamemode
+			);
+			const date = document.createElement('span');
+			date.className = 'replay-recent-date';
+			date.textContent = formatReplayDate(entry.ts);
+			const detail = document.createElement('span');
+			detail.className = 'replay-recent-detail';
+			detail.textContent = replayEntryDetail(entry);
+			const action = document.createElement('span');
+			action.className = 'replay-recent-action';
+			action.textContent = 'Load';
+			button.appendChild(mode);
+			button.appendChild(date);
+			button.appendChild(detail);
+			button.appendChild(action);
+			button.addEventListener('click', () =>
+				loadReplayById(entry.replayid, button)
+			);
+			els.recentReplays.appendChild(button);
+		}
+	}
+
+	function gamemodeLabel(mode) {
+		return (
+			{ league: 'League', '40l': '40L', blitz: 'Blitz' }[mode] || 'Replay'
+		);
+	}
+
+	function formatReplayDate(ts) {
+		if (!ts) return '';
+		const date = new Date(ts);
+		if (Number.isNaN(date.getTime())) return '';
+		return date.toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		});
+	}
+
+	function replayEntryDetail(entry) {
+		if (entry.gamemode === 'league') {
+			const opponent = entry.otherusers?.[0]?.username || 'Unknown';
+			const board = entry.results?.leaderboard || [];
+			const me = board.find((player) => player.id === state.search.user?._id);
+			const them = board.find(
+				(player) => player.id !== state.search.user?._id
+			);
+			if (me && them) {
+				return `vs ${them.username || opponent} · ${me.wins ?? 0}–${
+					them.wins ?? 0
+				}`;
+			}
+			return `vs ${opponent}`;
+		}
+		const stats = entry.results?.stats || {};
+		const parts = [];
+		if (entry.gamemode === '40l') {
+			const time = Number(stats.finaltime) || 0;
+			if (time) parts.push(C.formatTime(time / 1000));
+			if (stats.lines) parts.push(`${stats.lines} lines`);
+		} else {
+			if (stats.score) {
+				parts.push(`${Math.round(stats.score).toLocaleString()} pts`);
+			}
+			if (stats.lines) parts.push(`${stats.lines} lines`);
+		}
+		return parts.join(' · ') || 'Solo game';
+	}
+
+	async function loadReplayById(replayId, button) {
+		const id = API.parseReplayId(replayId);
+		if (!id) {
+			setSearchStatus('Invalid replay ID.', 'error');
+			return;
+		}
+		if (button) {
+			button.disabled = true;
+			button.classList.add('loading');
+		}
+		setSearchStatus('Downloading replay…', 'loading');
+		try {
+			const text = await API.getReplay(id);
+			loadReplayText(text, `${id}.ttrm`, { type: 'id', id });
+			setSearchStatus('', '');
+		} catch (error) {
+			setSearchStatus(
+				error.message || 'Could not load that replay.',
+				'error'
+			);
+		} finally {
+			if (button) {
+				button.disabled = false;
+				button.classList.remove('loading');
+			}
+		}
+	}
+
+	function loadReplayText(text, name, source) {
 		try {
 			const replay = C.parseReplay(text);
 			state.replay = replay;
 			state.fileName = name || 'replay.ttrm';
+			state.source = source || null;
 			state.statsConfig = C.loadReplayStatsConfig();
 			state.statsScope = 'all';
+			state.activePlayerId = null;
 			els.replayError.hidden = true;
 			els.dropZone.hidden = true;
 			els.replayView.hidden = false;
+			updateReplayUrl(source);
 			buildMatchHeader();
 			buildRoundTabs();
 			selectRound(0);
 		} catch (error) {
 			showError(error.message);
 		}
+	}
+
+	function updateReplayUrl(source) {
+		const url = new URL(location.href);
+		url.searchParams.delete('replay');
+		url.searchParams.delete('replayId');
+		url.searchParams.delete('user');
+		url.searchParams.delete('gamemode');
+		if (source?.type === 'id') {
+			url.searchParams.set('replayId', source.id);
+		} else if (source?.type === 'url') {
+			url.searchParams.set('replay', source.url);
+		}
+		history.replaceState(null, '', url);
+	}
+
+	function replayReturnUrl() {
+		const url = new URL('replay.html', location.href);
+		if (document.documentElement.classList.contains('mobile')) {
+			url.searchParams.set('mobile', '1');
+		}
+		if (state.source?.type === 'id') {
+			url.searchParams.set('replayId', state.source.id);
+		} else if (state.source?.type === 'url') {
+			url.searchParams.set('replay', state.source.url);
+		}
+		return url.toString();
 	}
 
 	function soloGameLabel(gametype, customtype) {
@@ -239,12 +637,26 @@
 		return customtype ? `${label} (${customtype})` : label;
 	}
 
+	function replayTitle() {
+		const replay = state.replay;
+		if (replay.kind === 'solo') {
+			const player = replay.rounds[0]?.players[0];
+			return `${player?.username || 'Player'} · ${soloGameLabel(
+				replay.gamemode,
+				replay.customtype
+			)}`;
+		}
+		const players = replay.rounds[0]?.players || [];
+		const names = players.map((player) => player.username).filter(Boolean);
+		return names.length ? names.join(' vs ') : state.fileName;
+	}
+
 	function buildMatchHeader() {
 		const replay = state.replay;
 		els.matchHeader.innerHTML = '';
 		const title = document.createElement('div');
 		title.className = 'replay-match-title';
-		title.textContent = state.fileName;
+		title.textContent = replayTitle();
 		const meta = document.createElement('div');
 		meta.className = 'replay-match-meta';
 		const mode =
@@ -324,13 +736,16 @@
 		state.maxFrame = round.maxFrame;
 		state.keyframes = [];
 		state.currentFrame = 0;
+		computeLayout();
 		buildPlayerGrid();
 		for (const entry of state.entries) C.tickPlayer(entry, 0);
 		state.keyframes.push(C.buildKeyframe(state.entries, 0));
 		state.lastStatsUpdate = 0;
 		updateRoundTabs();
 		updatePlaybackUi();
+		state.dirty = true;
 		renderAll();
+		state.dirty = false;
 	}
 
 	function destroyEntries() {
@@ -338,12 +753,23 @@
 		state.entries = [];
 		state.cards.clear();
 		els.playerGrid.innerHTML = '';
+		if (els.replayMiniBar) els.replayMiniBar.hidden = true;
+	}
+
+	function playerResultLabel(player) {
+		const reason = player.results?.gameoverreason;
+		if (state.replay?.kind === 'solo') {
+			return reason === 'clear' ? 'Complete' : 'Finished';
+		}
+		if (reason === 'winner') return 'Winner';
+		if (reason === 'topout') return 'Top out';
+		if (reason === 'garbagesmash') return 'Garbage smash';
+		return player.alive ? 'Alive' : 'Out';
 	}
 
 	function buildPlayerGrid() {
 		els.playerGrid.innerHTML = '';
 		state.cards.clear();
-		const cellSize = 20;
 		for (const entry of state.entries) {
 			const player = entry.player;
 			const card = document.createElement('div');
@@ -357,23 +783,19 @@
 			name.textContent = player.username;
 			const result = document.createElement('span');
 			result.className = 'replay-player-result';
-			const reason = player.results?.gameoverreason;
-			result.textContent =
-				reason === 'winner'
-					? 'Winner'
-					: reason === 'topout'
-						? 'Top out'
-						: reason === 'garbagesmash'
-							? 'Garbage smash'
-							: player.alive
-								? 'Alive'
-								: 'Out';
-			result.classList.toggle('winner', reason === 'winner');
+			result.textContent = playerResultLabel(player);
+			result.classList.toggle(
+				'winner',
+				player.results?.gameoverreason === 'winner'
+			);
 			const practice = document.createElement('button');
 			practice.type = 'button';
 			practice.className = 'button replay-practice-btn';
-			practice.textContent = 'Practice this state';
-			practice.addEventListener('click', () => practicePlayer(player.id));
+			practice.textContent = 'Practice';
+			practice.addEventListener('click', (event) => {
+				event.stopPropagation();
+				practicePlayer(player.id);
+			});
 			header.appendChild(name);
 			header.appendChild(result);
 			header.appendChild(practice);
@@ -385,7 +807,7 @@
 			const left = document.createElement('div');
 			left.className = 'left-column replay-left-column';
 			const holdWrap = document.createElement('div');
-			holdWrap.className = 'queue';
+			holdWrap.className = 'queue replay-hold-wrap';
 			holdWrap.innerHTML = 'HOLD<hr />';
 			const hold = document.createElement('canvas');
 			hold.width = 90;
@@ -394,7 +816,7 @@
 			left.appendChild(holdWrap);
 
 			const sessionPanel = document.createElement('div');
-			sessionPanel.className = 'session-panel';
+			sessionPanel.className = 'session-panel replay-session-panel';
 			const statsPanel = new C.StatsPanel(sessionPanel, {
 				showHeader: true,
 				showChain: true,
@@ -439,12 +861,28 @@
 			body.appendChild(left);
 			body.appendChild(boardStack);
 			body.appendChild(right);
+
+			// Compact stats strip for mobile.
+			const compactWrap = document.createElement('div');
+			compactWrap.className = 'replay-compact-stats';
+			const compactStats = new C.StatsPanel(compactWrap, {
+				showHeader: false,
+				showChain: true,
+				showAttack: false,
+				compact: true,
+				maxStats: 6,
+			});
+			compactStats.setVisibleStats(
+				C.getVisibleStats(state.statsConfig, player.id)
+			);
+
 			card.appendChild(header);
 			card.appendChild(body);
+			card.appendChild(compactWrap);
 			els.playerGrid.appendChild(card);
 
 			state.cards.set(player.id, {
-				cellSize,
+				element: card,
 				board,
 				hold,
 				queue,
@@ -452,8 +890,55 @@
 				meterCount,
 				meterSignature: '',
 				statsPanel,
+				compactStats,
+				practice,
 			});
 		}
+		if (
+			!state.activePlayerId ||
+			!state.cards.has(state.activePlayerId)
+		) {
+			state.activePlayerId = state.entries[0]?.player.id || null;
+		}
+		updatePlayerLayout();
+	}
+
+	function updatePlayerLayout() {
+		const { mobile, portrait } = state.layout;
+		const showMini = mobile && portrait && state.entries.length > 1;
+		for (const [id, card] of state.cards) {
+			const active = id === state.activePlayerId;
+			card.element.classList.toggle(
+				'replay-player-card--active',
+				showMini && active
+			);
+			card.element.classList.toggle(
+				'replay-player-card--mini',
+				showMini && !active
+			);
+		}
+		if (els.replayMiniBar) {
+			els.replayMiniBar.hidden = !showMini;
+		}
+		updateMiniBar();
+	}
+
+	function updateMiniBar() {
+		if (!els.replayMiniBar || els.replayMiniBar.hidden) return;
+		const inactive = state.entries.find(
+			(entry) => entry.player.id !== state.activePlayerId
+		);
+		if (!inactive) {
+			els.replayMiniBar.hidden = true;
+			return;
+		}
+		els.replayMiniName.textContent = inactive.player.username;
+		els.replayMiniResult.textContent = playerResultLabel(inactive.player);
+		C.renderBoard(els.replayMiniBoard, inactive.engine, {
+			cellSize: 3,
+			showGhost: false,
+			showGrid: false,
+		});
 	}
 
 	function stepOneFrame() {
@@ -467,13 +952,16 @@
 		}
 		if (
 			state.currentFrame % C.KEYFRAME_INTERVAL === 0 &&
-			!state.keyframes.some((keyframe) => keyframe.frame === state.currentFrame)
+			!state.keyframes.some(
+				(keyframe) => keyframe.frame === state.currentFrame
+			)
 		) {
 			state.keyframes.push(
 				C.buildKeyframe(state.entries, state.currentFrame)
 			);
 			state.keyframes.sort((a, b) => a.frame - b.frame);
 		}
+		state.dirty = true;
 		updatePlaybackUi();
 	}
 
@@ -484,7 +972,9 @@
 			Math.min(state.maxFrame, Math.floor(Number(frame) || 0))
 		);
 		if (target === state.currentFrame) {
+			state.dirty = true;
 			renderAll();
+			state.dirty = false;
 			return;
 		}
 		if (target < state.currentFrame) {
@@ -498,7 +988,9 @@
 		}
 		while (state.currentFrame < target) stepOneFrame();
 		state.lastStatsUpdate = 0;
+		state.dirty = true;
 		renderAll();
+		state.dirty = false;
 	}
 
 	function play() {
@@ -509,11 +1001,13 @@
 		state.playing = true;
 		state.lastTime = performance.now();
 		state.accumulator = 0;
+		state.dirty = true;
 		updatePlayPauseButton();
 	}
 
 	function pause() {
 		state.playing = false;
+		state.dirty = true;
 		updatePlayPauseButton();
 	}
 
@@ -543,7 +1037,10 @@
 			if (state.accumulator > C.FRAME_MS * 16) state.accumulator = 0;
 		}
 		state.lastTime = now;
-		renderAll();
+		if (state.playing || state.dirty) {
+			renderAll();
+			state.dirty = false;
+		}
 		requestAnimationFrame(loop);
 	}
 
@@ -552,12 +1049,31 @@
 		const now = performance.now();
 		const updateStats = now - state.lastStatsUpdate > 100;
 		if (updateStats) state.lastStatsUpdate = now;
+		const { mobile, portrait, cellSize, holdCell, queueCount, queueCell } =
+			state.layout;
 		for (const entry of state.entries) {
 			const card = state.cards.get(entry.player.id);
 			if (!card) continue;
-			C.renderBoard(card.board, entry.engine, { cellSize: card.cellSize });
-			C.renderQueue(card.queue, entry.engine, 6, 20, 90);
-			C.renderHold(card.hold, entry.engine, 20, 90, 60);
+			const isActive =
+				!mobile || !portrait || entry.player.id === state.activePlayerId;
+			if (!isActive) continue;
+			C.renderBoard(card.board, entry.engine, { cellSize });
+			const queueWidth = mobile ? queueCell * 4 : 90;
+			const holdWidth = mobile ? holdCell * 4 : 90;
+			C.renderQueue(
+				card.queue,
+				entry.engine,
+				queueCount,
+				queueCell,
+				queueWidth
+			);
+			C.renderHold(
+				card.hold,
+				entry.engine,
+				holdCell,
+				holdWidth,
+				holdCell * 3
+			);
 			const blocks = entry.engine.garbageQueue.queue;
 			const total = blocks.reduce((sum, block) => sum + block.amount, 0);
 			const signature = blocks.map((block) => block.amount).join(',');
@@ -570,22 +1086,36 @@
 					if (block.amount <= 0) continue;
 					const segment = document.createElement('div');
 					segment.className = 'replay-garbage-block';
-					segment.style.height = `${(block.amount * scale / maxLines) * 100}%`;
-					segment.title = `${block.amount} line${block.amount === 1 ? '' : 's'}`;
+					segment.style.height = `${
+						((block.amount * scale) / maxLines) * 100
+					}%`;
+					segment.title = `${block.amount} line${
+						block.amount === 1 ? '' : 's'
+					}`;
 					card.meterBlocks.appendChild(segment);
 				}
 				card.meterCount.textContent = String(total);
 			}
 			if (updateStats) {
 				const isFinal = state.currentFrame >= entry.player.frames;
-				card.statsPanel.update(
-					entry.tracker,
-					entry.engine,
-					entry.player.finalStats,
-					isFinal
-				);
+				if (mobile) {
+					card.compactStats.update(
+						entry.tracker,
+						entry.engine,
+						entry.player.finalStats,
+						isFinal
+					);
+				} else {
+					card.statsPanel.update(
+						entry.tracker,
+						entry.engine,
+						entry.player.finalStats,
+						isFinal
+					);
+				}
 			}
 		}
+		updateMiniBar();
 		updatePlaybackUi();
 	}
 
@@ -623,6 +1153,15 @@
 			source
 		);
 		C.savePracticeState(practiceState);
+		try {
+			sessionStorage.setItem('zztetris_replay_return', replayReturnUrl());
+		} catch (error) {
+			// Storage can be unavailable; the back button still works.
+		}
+		if (document.documentElement.classList.contains('mobile')) {
+			location.href = 'index.html?mobile=1&replayPractice=1';
+			return;
+		}
 		const opened = window.open('index.html?replayPractice=1', '_blank');
 		if (!opened) window.location.href = 'index.html?replayPractice=1';
 	}
@@ -653,10 +1192,14 @@
 		for (const entry of state.entries) {
 			const card = state.cards.get(entry.player.id);
 			if (!card) continue;
-			card.statsPanel.setVisibleStats(
-				C.getVisibleStats(state.statsConfig, entry.player.id)
+			const visible = C.getVisibleStats(
+				state.statsConfig,
+				entry.player.id
 			);
+			card.statsPanel.setVisibleStats(visible);
+			card.compactStats.setVisibleStats(visible);
 		}
+		state.dirty = true;
 	}
 
 	function renderStatsSettings() {

@@ -4,23 +4,25 @@
 // pick up the new files. The 23 MB legal-boards database and the research
 // pc_data.json are deliberately not precached; the mobile shell does not use
 // the analyzer.
-const CACHE_VERSION = 'zztetris-mobile-53ff08d5';
+const CACHE_VERSION = 'zztetris-mobile-ed2392dd';
 
 const ASSETS = [
 	'./index.html?mobile=1',
 	'./manifest.webmanifest',
-	'./styles/mobile.css?v=34efdfcf',
+	'./styles/mobile.css?v=5b179213',
 	'./styles/zztetris.css?v=f428c787',
-	'./styles/replay.css?v=7f02e0d8',
+	'./styles/replay.css?v=af561f31',
+	'./styles/replay-mobile.css?v=76de9055',
 	'./replay.html',
-	'./replay.js?v=e2ad0fcf',
-	'./replay-practice.js?v=3b5628c6',
-	'./replay-common.js?v=96c27288',
+	'./replay.js?v=8253d247',
+	'./replay-api.js?v=b9cad92a',
+	'./replay-practice.js?v=ff40dac7',
+	'./replay-common.js?v=1f167657',
 	'./replay-engine.js?v=db2dd99e',
 	'./styles/paint_bucket.css',
 	'./styles/import_export.css',
 	'./styles/board_settings.css',
-	'./mobile.js?v=cec7731a',
+	'./mobile.js?v=13c9e779',
 	'./base.js?v=c778a63a',
 	'./zztetris.js?v=a0150133',
 	'./stats-config.js?v=294eb553',
@@ -112,17 +114,24 @@ self.addEventListener('fetch', (event) => {
 	const url = new URL(request.url);
 	if (url.origin !== self.location.origin) return;
 	if (url.pathname.endsWith('.leb128') || url.pathname.endsWith('pc_data.json')) return;
+	// The replay proxy has its own TTL cache; the service worker must not
+	// freeze its responses forever.
+	if (url.pathname.endsWith('tetrio-proxy.php')) return;
 
 	// Navigations are network-first so an online launch always sees a new
 	// index.html and its versioned assets. Cached shell is the offline fallback.
 	if (request.mode === 'navigate') {
+		const isReplay =
+			url.pathname.endsWith('/replay.html') ||
+			url.pathname.endsWith('replay.html');
+		const cacheKey = isReplay ? './replay.html' : './index.html?mobile=1';
 		event.respondWith(
 			fetch(request)
 				.then((response) => {
 					if (response && response.ok) {
 						const copy = response.clone();
 						caches.open(CACHE_VERSION).then((cache) => {
-							cache.put('./index.html?mobile=1', copy);
+							cache.put(cacheKey, copy);
 						});
 					}
 					return response;
@@ -130,7 +139,7 @@ self.addEventListener('fetch', (event) => {
 				.catch(() =>
 					caches
 						.match(request)
-						.then((cached) => cached || caches.match('./index.html?mobile=1'))
+						.then((cached) => cached || caches.match(cacheKey))
 				)
 		);
 		return;

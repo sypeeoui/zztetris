@@ -22,6 +22,10 @@ html.mobile body {
 	inset: 0;
 }
 
+html.mobile [hidden] {
+	display: none !important;
+}
+
 /* Hide the desktop chrome. */
 html.mobile .sidebar-nav,
 html.mobile .session-panel,

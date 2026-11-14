@@ -379,12 +379,15 @@
 		if (exit) {
 			exit.addEventListener('click', (event) => {
 				event.preventDefault();
+				let returnUrl = '';
 				try {
+					returnUrl =
+						sessionStorage.getItem('zztetris_replay_return') || '';
 					sessionStorage.removeItem(STORAGE_KEY);
 				} catch (error) {
 					// ignore
 				}
-				location.href = 'index.html';
+				location.href = returnUrl || 'index.html';
 			});
 		}
 		const lockHold = $('replayLockHold');

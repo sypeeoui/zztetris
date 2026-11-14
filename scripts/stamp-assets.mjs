@@ -31,6 +31,7 @@ const SCAN_FILES = [
 	'engineWorker.js',
 	'replay.html',
 	'replay.js',
+	'replay-api.js',
 	'replay-practice.js',
 	'replay-common.js',
 	'attack-sim.js',

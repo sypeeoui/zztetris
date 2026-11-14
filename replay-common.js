@@ -278,6 +278,11 @@
 		if (data && data.data && Array.isArray(data.data.events)) {
 			return parseSoloReplay(data);
 		}
+		// Raw solo replays from the game API (and inoue.szy.lol) put the
+		// events under replay.events instead of data.events.
+		if (data && data.replay && Array.isArray(data.replay.events)) {
+			return parseSoloReplay(data);
+		}
 		throw new Error('Not a TETR.IO match replay (.ttrm).');
 	}
 
@@ -363,7 +368,7 @@
 			perfectPieces,
 			faultyPieces: Math.max(0, pieces - perfectPieces),
 			finesseFaults: Number(finesse.faults) || 0,
-			finalTimeMs: Number(stats.finalTime) || 0,
+			finalTimeMs: Number(stats.finaltime ?? stats.finalTime) || 0,
 		};
 	}
 
@@ -470,15 +475,31 @@
 	}
 
 	function parseSoloReplay(data) {
-		const events = Array.isArray(data.data?.events) ? data.data.events : [];
-		const full = events.find((event) => event.type === 'full');
-		if (!full || !full.data) {
+		// Two shapes are supported:
+		//   .ttr files: data.data.events with an initial "full" event that
+		//               carries the starting board, queue and stats.
+		//   raw API:    data.replay.events, starting from an empty board at
+		//               frame 0. This is what inoue.szy.lol returns.
+		const raw = data.replay && Array.isArray(data.replay.events);
+		const events = raw
+			? data.replay.events
+			: Array.isArray(data.data?.events)
+				? data.data.events
+				: [];
+		const full = raw ? null : events.find((event) => event.type === 'full');
+		if (!raw && (!full || !full.data)) {
 			throw new Error('Solo replay is missing its initial full event.');
 		}
-		const options = full.data.options || {};
-		const frames = Number(data.data?.frames) || 0;
-		const endcontext = data.endcontext || {};
-		const user = data.user || {};
+		const options = raw ? data.replay.options || {} : full.data.options || {};
+		const frames = Number(raw ? data.replay.frames : data.data?.frames) || 0;
+		const endcontext = raw
+			? data.replay.results?.stats || {}
+			: data.endcontext || {};
+		const user = raw ? data.users?.[0] || {} : data.user || {};
+		const results = raw
+			? data.replay.results || {}
+			: { gameoverreason: 'winner', stats: endcontext };
+		const gametype = raw ? data.gamemode || 'custom' : data.gametype || 'custom';
 		const player = {
 			id: user._id || data._id || 'solo',
 			username: user.username || 'Player',
@@ -489,15 +510,13 @@
 			options,
 			events,
 			frames,
-			results: {
-				gameoverreason: 'winner',
-				stats: normalizeSoloStats(endcontext),
-			},
-			finalStats: normalizeSoloStats(endcontext),
+			results,
+			finalStats: normalizeSoloStats(raw ? results.stats || {} : endcontext),
 			solo: {
 				full,
-				gametype: data.gametype || 'custom',
-				customtype: data.customtype || null,
+				raw,
+				gametype,
+				customtype: raw ? null : data.customtype || null,
 				endcontext,
 			},
 		};
@@ -510,11 +529,11 @@
 		};
 		return {
 			kind: 'solo',
-			id: data._id || data.shortid || null,
-			gamemode: data.gametype || 'custom',
-			customtype: data.customtype || null,
+			id: data._id || data.id || data.shortid || null,
+			gamemode: gametype,
+			customtype: player.solo.customtype,
 			ts: data.ts,
-			users: [user],
+			users: raw ? data.users || [] : [user],
 			leaderboard: [],
 			rounds: [round],
 			raw: data,
@@ -615,6 +634,21 @@
 		if (!options.levels) return Number(options.g ?? 0.02);
 		if (options.levelstatic) return Number(options.g ?? 0.02);
 		const level = soloLevel(lines, options.levelspeed);
+		// Raw API replays (40L/Blitz) use levelgbase/levelgincrease. TETR.IO's
+		// leveling gravity is exponential: (base - (level-1)*increase)^(level-1)
+		// seconds per row. The old .ttr path used a linear approximation, so
+		// keep that for gbase/gspeed to avoid changing existing files.
+		if (Number.isFinite(Number(options.levelgbase))) {
+			const base = Number(options.levelgbase);
+			const increase = Number(options.levelgincrease ?? 0.007);
+			const secsPerRow = Math.pow(
+				base - (level - 1) * increase,
+				level - 1
+			);
+			if (Number.isFinite(secsPerRow) && secsPerRow > 0) {
+				return Math.min(20, 1 / (60 * secsPerRow));
+			}
+		}
 		const base = Number(options.gbase);
 		const speed =
 			Number(options.gspeed) || Number(options.levelspeed) || 0;
@@ -1265,19 +1299,21 @@
 		ctx.fillStyle = BG;
 		ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-		ctx.strokeStyle = GRID;
-		ctx.lineWidth = 1;
-		for (let x = 0; x <= width; x++) {
-			ctx.beginPath();
-			ctx.moveTo(x * cellSize + 0.5, 0);
-			ctx.lineTo(x * cellSize + 0.5, canvasHeight);
-			ctx.stroke();
-		}
-		for (let y = 0; y <= visibleRows; y++) {
-			ctx.beginPath();
-			ctx.moveTo(0, y * cellSize + 0.5);
-			ctx.lineTo(canvasWidth, y * cellSize + 0.5);
-			ctx.stroke();
+		if (options.showGrid !== false) {
+			ctx.strokeStyle = GRID;
+			ctx.lineWidth = 1;
+			for (let x = 0; x <= width; x++) {
+				ctx.beginPath();
+				ctx.moveTo(x * cellSize + 0.5, 0);
+				ctx.lineTo(x * cellSize + 0.5, canvasHeight);
+				ctx.stroke();
+			}
+			for (let y = 0; y <= visibleRows; y++) {
+				ctx.beginPath();
+				ctx.moveTo(0, y * cellSize + 0.5);
+				ctx.lineTo(canvasWidth, y * cellSize + 0.5);
+				ctx.stroke();
+			}
 		}
 
 		for (let y = 0; y < visibleRows; y++) {
@@ -1403,6 +1439,8 @@
 		constructor(container, options = {}) {
 			this.container = container;
 			this.options = options;
+			this.compact = !!options.compact;
+			this.maxStats = Number(options.maxStats) || 0;
 			this.visible = [];
 			this.rows = new Map();
 			this.chain = null;
@@ -1440,6 +1478,7 @@
 		setVisibleStats(ids) {
 			this.visible = Array.isArray(ids) ? ids.slice() : [];
 			this.container.innerHTML = '';
+			this.container.classList.toggle('session-panel--compact', this.compact);
 			this.rows.clear();
 			this.chain = null;
 			this.attack = null;
@@ -1472,14 +1511,18 @@
 			const stats = document.createElement('div');
 			stats.className = 'session-stats';
 			this.container.appendChild(stats);
-			if (!this.visible.length) {
+			const visible =
+				this.maxStats > 0
+					? this.visible.slice(0, this.maxStats)
+					: this.visible;
+			if (!visible.length) {
 				const empty = document.createElement('div');
 				empty.className = 'session-stat-empty';
 				empty.textContent = 'No stats selected';
 				stats.appendChild(empty);
 				return;
 			}
-			for (const id of this.visible) {
+			for (const id of visible) {
 				const def = root.ZZStatsConfig.STAT_DEFS.find(
 					(entry) => entry.id === id
 				);
