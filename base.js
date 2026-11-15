@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=669051e5', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=ff5aa528', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -998,6 +998,30 @@ function checkTopOut() {
 			}
 		}
 	}
+}
+
+function playSnd(sfx, overlap) {
+	const volume = Number.isFinite(audiolevel) ? audiolevel / 100 : 1;
+	if (window.ZZSoundPack) {
+		const category = /^Clear|^PerfectClear/.test(sfx)
+			? 'clear'
+			: /^Combo/.test(sfx)
+				? 'combo'
+				: /^B2B/.test(sfx)
+					? 'b2b'
+					: undefined;
+		window.ZZSoundPack.play(sfx, {
+			volume,
+			category,
+		});
+		return;
+	}
+	const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
+	if (overlap) {
+		s.currentTime = 0;
+	}
+	s.volume = volume;
+	s.play();
 }
 
 function setShape(hd) {
@@ -4245,30 +4269,6 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	if (window.__zzHandlingInterval) clearInterval(window.__zzHandlingInterval);
 	window.__zzHandlingInterval = setInterval(handleShiftTick, HANDLING_STEP);
 
-	function playSnd(sfx, overlap) {
-		if (window.ZZSoundPack) {
-			const category = /^Clear|^PerfectClear/.test(sfx)
-				? 'clear'
-				: /^Combo/.test(sfx)
-					? 'combo'
-					: /^B2B/.test(sfx)
-						? 'b2b'
-						: undefined;
-			window.ZZSoundPack.play(sfx, {
-				volume: audiolevel / 100,
-				category,
-			});
-			return;
-		}
-		const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
-		if (overlap) {
-			s.currentTime = 0
-		}
-		s.volume = audiolevel/100;
-		s.play()
-	}
-
-
 	function move(dir) {
 		let moved = false;
 		switch (dir) {
@@ -4341,7 +4341,13 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		clearActive();
 		updateGhost();
 		setShape();
-		if (rotated) window.ZZAutoLock?.onMove();
+		if (rotated) {
+			const spin = detectSpin();
+			if (spin.tspin || spin.mini || spin.allspinMini) {
+				playSnd('Spin');
+			}
+			window.ZZAutoLock?.onMove();
+		}
 	}
 
 	// TETR.IO-style horizontal handling. TETR.IO waits DAS, moves once, then
@@ -4530,6 +4536,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			lastKick,
 			lastRotationType,
 		});
+		if (attack > 0) {
+			const size =
+				attack >= 6 ? 'Large' : attack >= 3 ? 'Med' : 'Light';
+			playSnd('GarbageOut' + size);
+		}
 		window.ZZReplayPractice?.afterLock({ cleared, attack });
 		window.ZZAttackSim?.afterLock({ cleared, attack });
 		newPiece();
@@ -4619,6 +4630,70 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		hold: () => hold(),
 	};
 
+	function detectSpin() {
+		let spinT = false;
+		let spinMini = false;
+		let spinAllMini = false;
+		if (piece == 'T' && lastAction == 'ROT') {
+			const corners = [
+				[yPOS + 1, xPOS],
+				[yPOS + 1, xPOS + 2],
+				[yPOS + 3, xPOS + 2],
+				[yPOS + 3, xPOS],
+			];
+			const facingCorners = [corners[rot], corners[(rot + 1) % 4]];
+			let filledCorners = 0;
+			corners.forEach((corner) => {
+				if (
+					corner[0] >= 40 ||
+					corner[1] < 0 ||
+					corner[1] >= 10
+				) {
+					filledCorners++;
+				} else if (
+					board[corner[0]] &&
+					board[corner[0]][corner[1]] &&
+					board[corner[0]][corner[1]]['t'] == 1
+				) {
+					filledCorners++;
+				}
+			});
+			spinT = filledCorners >= 3;
+			if (spinT) {
+				let filledFacingCorners = 0;
+				facingCorners.forEach((corner) => {
+					if (
+						corner[0] >= 40 ||
+						corner[1] < 0 ||
+						corner[1] >= 10
+					) {
+						filledFacingCorners++;
+					} else if (
+						board[corner[0]] &&
+						board[corner[0]][corner[1]] &&
+						board[corner[0]][corner[1]]['t'] == 1
+					) {
+						filledFacingCorners++;
+					}
+				});
+				spinMini = filledFacingCorners < 2;
+				if (spinMini && lastRotationType === 90 && lastKick === 4) {
+					spinMini = false;
+				}
+			} else if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
+				spinT = true;
+				spinMini = true;
+			}
+		}
+		if (!spinT && piece != 'T' && piece != 'O' && lastAction == 'ROT') {
+			if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
+				spinMini = true;
+				spinAllMini = true;
+			}
+		}
+		return { tspin: spinT, mini: spinMini, allspinMini: spinAllMini };
+	}
+
 	function checkLines() {
 		const comboBefore = combo;
 		const b2bBefore = b2b;
@@ -4627,53 +4702,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		allspinMini = false;
 		pc = false;
 		spinText = '';
-		if (piece == 'T' && lastAction == 'ROT') {
-			corners = [
-				[yPOS + 1, xPOS],
-				[yPOS + 1, xPOS + 2],
-				[yPOS + 3, xPOS + 2],
-				[yPOS + 3, xPOS],
-			];
-			facingCorners = [corners[rot], corners[(rot + 1) % 4]];
-
-			filledCorners = 0;
-			corners.forEach((corner) => {
-				if (corner[0] >= 40 || corner[1] < 0 || corner[1] >= 10) filledCorners++;
-				else if (board[corner[0]] && board[corner[0]][corner[1]] && board[corner[0]][corner[1]]['t'] == 1) filledCorners++;
-			});
-			tspin = filledCorners >= 3;
-
-			if (tspin) {
-				filledFacingCorners = 0;
-				facingCorners.forEach((corner) => {
-					if (corner[0] >= 40 || corner[1] < 0 || corner[1] >= 10) filledFacingCorners++;
-					else if (board[corner[0]] && board[corner[0]][corner[1]] && board[corner[0]][corner[1]]['t'] == 1) filledFacingCorners++;
-				});
-				mini = filledFacingCorners < 2;
-
-				// Kick shortcut: If the rotation succeeded using the last kick (Index 4),
-				// it is automatically "upgraded" to a Regular T-Spin, even if it only satisfies the Mini criteria.
-				// (Only for 90-degree rotations)
-				if (mini && lastRotationType === 90 && lastKick === 4) {
-					mini = false;
-				}
-			} else {
-				// Immobile exception for T-piece: If it fails the 3-corner rule but is immobile,
-				// it's awarded a T-spin Mini.
-				if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
-					tspin = true;
-					mini = true;
-				}
-			}
-		}
-
-		// Non-T piece spin detection (L, J, S, Z, I)
-		if (!tspin && piece != 'T' && piece != 'O' && lastAction == 'ROT') {
-			if (isImmobile(pieces[piece][rot], xPOS, yPOS)) {
-				mini = true;
-				allspinMini = true;
-			}
-		}
+		const spin = detectSpin();
+		tspin = spin.tspin;
+		mini = spin.mini;
+		allspinMini = spin.allspinMini;
 
 		clearedIndexes = [];
 		garbageLinesCleared = 0;
@@ -4768,6 +4800,9 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (pc) text += '\nPERFECT\nCLEAR!';
 		if (b2b > 0 && b2bEligible) text += ' x' + b2b.toString();
 		if (text != '') notify(text);
+		if (tspin || mini || allspinMini) {
+			playSnd('SpinEnd');
+		}
 		if (cleared > 0) {
 			if (pc) {
 				playSnd('PerfectClear');
@@ -4787,7 +4822,15 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			}
 		}
 		if (b2bBefore > 4 && b2b === 0 && cleared > 0) {
-			playSnd('B2BBreak');
+			const level =
+				b2bBefore >= 24
+					? 4
+					: b2bBefore >= 12
+						? 3
+						: b2bBefore >= 8
+							? 2
+							: 1;
+			playSnd('B2BChargeBlast' + level);
 		}
 		if (comboBefore >= 1 && cleared === 0) {
 			playSnd('ComboBreak');

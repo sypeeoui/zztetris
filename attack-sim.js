@@ -240,6 +240,8 @@
 			gameid: 0,
 			confirmed: true,
 		});
+		const level = Math.max(1, Math.min(4, Math.ceil(size / 2)));
+		root.playSnd?.('GarbageWindup' + level);
 		updateMeter();
 	}
 
@@ -260,6 +262,8 @@
 				root.addGarbageRows(row.column, row.amount, row.size);
 			}
 		}
+		const size = total >= 6 ? 'Large' : total >= 3 ? 'Med' : 'Light';
+		root.playSnd?.('GarbageIn' + size);
 		return total;
 	}
 
@@ -279,6 +283,7 @@
 			);
 			if (canceled > 0) {
 				root.ZZStats?.addGarbageCanceled?.(canceled);
+				root.playSnd?.('Counter');
 			}
 		} else {
 			const rows = queue.tank(Date.now(), MAX_TANK, true);

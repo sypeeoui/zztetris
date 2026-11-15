@@ -105,6 +105,13 @@
 						rate: 0.95 + Math.random() * 0.1,
 					});
 					break;
+				case 'spin':
+					this.play('Spin', {
+						volume,
+						pan,
+						category: 'spin',
+					});
+					break;
 				case 'hold':
 					this.play('Hold', { volume, pan });
 					break;
@@ -129,8 +136,47 @@
 			const pc = !!info?.pc;
 			const b2b = Math.max(0, Number(info?.b2b) || 0);
 			const combo = Math.max(0, Number(info?.combo) || 0);
-			const surge = Math.max(0, Number(attack?.surge) || 0);
+			const surge = Math.max(
+				0,
+				Number(info?.surge ?? attack?.surge) || 0
+			);
+			const sent = Math.max(0, Number(info?.sent) || 0);
+			const b2bBefore = Math.max(0, Number(info?.b2bBefore) || 0);
 			const volume = this.volume();
+
+			if (info?.isSpin) {
+				this.play('SpinEnd', {
+					volume,
+					pan,
+					category: 'spin',
+				});
+			}
+
+			if (sent > 0) {
+				const size =
+					sent >= 6 ? 'Large' : sent >= 3 ? 'Med' : 'Light';
+				this.play('GarbageOut' + size, {
+					volume,
+					pan,
+					category: 'garbage',
+				});
+			}
+
+			if (surge > 0) {
+				const level =
+					b2bBefore >= 24
+						? 4
+						: b2bBefore >= 12
+							? 3
+							: b2bBefore >= 8
+								? 2
+								: 1;
+				this.playCue('B2BChargeBlast' + level, {
+					volume,
+					pan,
+					category: 'b2b',
+				});
+			}
 
 			if (cleared === 0 && !pc) return;
 
@@ -180,14 +226,6 @@
 					category: 'combo',
 				});
 			}
-
-			if (surge > 0) {
-				this.playCue('B2BBreak', {
-					volume,
-					pan,
-					category: 'b2b',
-				});
-			}
 		}
 
 		playGarbage(pan, type, event) {
@@ -199,19 +237,26 @@
 			const volume = this.volume();
 			const size = amount >= 6 ? 'Large' : amount >= 3 ? 'Med' : 'Light';
 			if (type === 'receive') {
-				this.play('Incoming' + size, {
+				this.play('GarbageIn' + size, {
 					volume,
 					pan,
 					category: 'garbage',
 				});
 			} else if (type === 'tank') {
-				this.play('Garbage' + size, {
-					volume,
+				const level = Math.max(1, Math.min(4, Math.ceil(amount / 2)));
+				this.play('GarbageWindup' + level, {
+					volume: volume * 0.8,
 					pan,
 					category: 'garbage',
 				});
 			} else if (type === 'cancel') {
-				this.play('Hit', {
+				this.play('Counter', {
+					volume: volume * 0.7,
+					pan,
+					category: 'garbage',
+				});
+			} else if (type === 'confirm') {
+				this.play('Impact', {
 					volume: volume * 0.5,
 					pan,
 					category: 'garbage',

@@ -585,6 +585,33 @@ html.mobile.replay-immersive .replay-view {
 
 html.mobile.replay-immersive .replay-play-area {
 	gap: 0;
+	min-height: 100vh;
+	align-items: center;
+}
+
+html.mobile.replay-immersive .replay-compact-stats {
+	display: flex !important;
+	align-items: stretch;
+	gap: 4px;
+	overflow-x: auto;
+	padding: 2px 0;
+	-webkit-overflow-scrolling: touch;
+}
+
+html.mobile.replay-immersive .replay-compact-stats .session-chain-item,
+html.mobile.replay-immersive .replay-compact-stats .session-stat {
+	min-width: 38px;
+	padding: 1px 3px;
+}
+
+html.mobile.replay-immersive .replay-compact-stats .session-chain-label,
+html.mobile.replay-immersive .replay-compact-stats .session-stat-label {
+	font-size: 7px;
+}
+
+html.mobile.replay-immersive .replay-compact-stats .session-chain-value,
+html.mobile.replay-immersive .replay-compact-stats .session-stat-value {
+	font-size: 10px;
 }
 
 html.mobile.replay-immersive .replay-player-card {
@@ -629,6 +656,16 @@ html.mobile.replay-immersive .replay-immersive-controls {
 		display: flex;
 		gap: 6px;
 		align-items: stretch;
+	}
+
+	html.mobile.replay-immersive .replay-play-area {
+		display: flex;
+		align-items: center;
+		min-height: 100vh;
+	}
+
+	html.mobile.replay-immersive .replay-play-area .replay-player-grid {
+		width: 100%;
 	}
 
 	html.mobile .replay-round-tabs {

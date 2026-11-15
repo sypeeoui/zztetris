@@ -805,6 +805,7 @@
 					this.onGarbageCancel(event);
 					this.onGarbageEvent('cancel', event);
 				},
+				garbageConfirm: (event) => this.onGarbageEvent('confirm', event),
 			};
 			engine.events.on('falling.new', this.handlers.fallingNew);
 			engine.events.on('falling.lock.pre', this.handlers.lockPre);
@@ -812,6 +813,7 @@
 			engine.events.on('garbage.receive', this.handlers.garbageReceive);
 			engine.events.on('garbage.tank', this.handlers.garbageTank);
 			engine.events.on('garbage.cancel', this.handlers.garbageCancel);
+			engine.events.on('garbage.confirm', this.handlers.garbageConfirm);
 		}
 
 		onGarbageEvent(type, event) {
@@ -826,6 +828,7 @@
 			events.off('garbage.receive', this.handlers.garbageReceive);
 			events.off('garbage.tank', this.handlers.garbageTank);
 			events.off('garbage.cancel', this.handlers.garbageCancel);
+			events.off('garbage.confirm', this.handlers.garbageConfirm);
 		}
 
 		onFallingNew({ piece, isHold }) {
@@ -903,6 +906,11 @@
 				b2bBefore,
 				comboBefore,
 				garbageCleared: Number(res.garbageCleared) || 0,
+				sent: (res.garbage || []).reduce(
+					(sum, value) => sum + (Number(value) || 0),
+					0
+				),
+				surge: Number(res.surge) || 0,
 				shapeKey,
 				skipFinesse: !shapeKey,
 				isSpin: tspin || allspinMini,
@@ -1101,8 +1109,10 @@
 			if (entry.onAction) {
 				if (before && after) {
 					if (before.held !== after.held) entry.onAction('hold');
-					else if (before.rot !== after.rot) entry.onAction('rotate');
-					else if (before.x !== after.x) entry.onAction('move');
+					else if (before.rot !== after.rot) {
+						entry.onAction('rotate');
+						if (engine.lastSpin) entry.onAction('spin');
+					} else if (before.x !== after.x) entry.onAction('move');
 				}
 				for (const event of frameEvents) {
 					if (event.type !== 'keydown' || !event.data) continue;

@@ -401,7 +401,7 @@
 					queueCell = 10;
 				}
 				const statsHeight = state.statsOpen ? 36 : 0;
-				const reservedHeight = immersive ? 60 : 300 + statsHeight;
+				const reservedHeight = immersive ? 96 : 300 + statsHeight;
 				const reservedWidth = sidePreviewWidth + 6 + 12 + 17;
 				const heightCells = Math.floor((vh - reservedHeight) / 23);
 				const widthCells = Math.floor((vw - reservedWidth) / 10);
@@ -429,7 +429,7 @@
 						?.offsetHeight || 31;
 				const cardChrome = playerHeaderH + 4 + 2 + 8 + 2;
 				const reservedHeight = immersive
-					? 8
+					? 44
 					: headerH + matchH + tabsH + dockH + cardChrome + 6;
 				const heightCells = Math.floor((vh - reservedHeight) / 23);
 				const widthCells = Math.floor((vw / 2 - 17 - 12) / 10);

@@ -2,7 +2,7 @@
 
 ## TETR.IO sound effects
 
-- Source: TETR.IO, https://tetr.io/
+- Source: TETR.IO official sound pack, `https://tetr.io/sfx/tetrio.opus.rsd`
 - Files: `assets/sfx/tetrio/*.mp3`
 - Copyright: © osk / TETR.IO
 - Used by: the optional `TETR.IO (official)` sound pack in `sound-pack.js`.
