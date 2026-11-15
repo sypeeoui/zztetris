@@ -21,7 +21,7 @@
 	};
 
 	const GRAVITY_DEFAULTS = {
-		gravityMs: 700,
+		gravityMs: 10000,
 	};
 
 	let gravityUiBound = false;

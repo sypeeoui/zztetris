@@ -320,7 +320,7 @@
 						</tr>
 						<tr>
 							<td>Swap Hold</td>
-							<td class="input"><kbd id="5">Shift</kbd></td>
+							<td class="input"><kbd id="5">KeyC</kbd></td>
 						</tr>
 						<tr>
 							<td>Rotate Clockwise</td>
@@ -332,31 +332,31 @@
 						</tr>
 						<tr>
 							<td>Rotate 180°</td>
-							<td class="input"><kbd id="8">KeyC</kbd></td>
+							<td class="input"><kbd id="8">ArrowUp</kbd></td>
 						</tr>
 						<tr>
 							<td>Restart</td>
-							<td class="input"><kbd id="9">KeyR</kbd></td>
+							<td class="input"><kbd id="9">Backquote</kbd></td>
 						</tr>
 						<tr>
 							<td>Undo</td>
-							<td class="input"><kbd id="10">KeyT</kbd></td>
+							<td class="input"><kbd id="10">Ctrl+KeyZ</kbd></td>
 						</tr>
 						<tr>
 							<td>Redo</td>
-							<td class="input"><kbd id="11">KeyY</kbd></td>
+							<td class="input"><kbd id="11">Ctrl+KeyY</kbd></td>
 						</tr>
 						<tr>
 							<td>Reset Session</td>
-							<td class="input"><kbd id="12">KeyO</kbd></td>
+							<td class="input"><kbd id="12">Tab</kbd></td>
 						</tr>
 						<tr>
 							<td>Reset Queue</td>
-							<td class="input"><kbd id="13">KeyU</kbd></td>
+							<td class="input"><kbd id="13">ShiftLeft</kbd></td>
 						</tr>
 						<tr>
 							<td>Reset Queue + Hold</td>
-							<td class="input"><kbd id="14">KeyI</kbd></td>
+							<td class="input"><kbd id="14">IntlBackslash</kbd></td>
 						</tr>
 					</table>
 				</section>
@@ -366,23 +366,23 @@
 					<table>
 						<tr>
 							<td>[DAS] Delayed Auto Shift</td>
-							<td><input type="number" id="das" max="750" value="160" /></td>
+							<td><input type="number" id="das" max="750" value="83" /></td>
 						</tr>
 						<tr>
 							<td>[ARR] Auto Repeat Rate</td>
-							<td><input type="number" id="arr" max="500" value="30" /></td>
+							<td><input type="number" id="arr" max="500" value="2" /></td>
 						</tr>
 						<tr>
 							<td>[SDR] Soft Drop Rate</td>
-							<td><input type="number" id="sdr" max="250" value="15" /></td>
+							<td><input type="number" id="sdr" max="250" value="0" /></td>
 						</tr>
 						<tr>
 							<td>Cell Size — Pixels</td>
-							<td><input type="number" id="cellpx" min="3" value="20" /></td>
+							<td><input type="number" id="cellpx" min="3" value="36" /></td>
 						</tr>
 						<tr>
 							<td>Audio Level</td>
-							<td><input type="number" id="audiolevel" min="0" max="100" value="100" /></td>
+							<td><input type="number" id="audiolevel" min="0" max="100" value="25" /></td>
 						</tr>
 					</table>
 				</section>
@@ -485,9 +485,9 @@
 		</div>
 
 		<script src="keybinds.js?v=d3dc5230"></script>
-		<script src="practice-settings.js?v=43a1be04"></script>
-		<script src="stats-config.js?v=87260c9e"></script>
-		<script src="settings-backup.js?v=0dae80f5"></script>
+		<script src="practice-settings.js?v=bfeb82f3"></script>
+		<script src="stats-config.js?v=77512383"></script>
+		<script src="settings-backup.js?v=6697cef7"></script>
 		<script src="sound-pack.js?v=2d5fce9a"></script>
 		<script>
 			const print = console.log;
@@ -499,21 +499,21 @@
 				'ArrowRight',
 				'ArrowDown',
 				'Space',
-				'ShiftLeft',
+				'KeyC',
 				'KeyX',
 				'KeyZ',
-				'KeyC',
-				'KeyR',
-				'KeyT',
-				'KeyY',
-				'160',
-				'30',
-				'15',
-				'20',
-				'100',
-				'KeyO',
-				'KeyU',
-				'KeyI',
+				'ArrowUp',
+				'Backquote',
+				'Ctrl+KeyZ',
+				'Ctrl+KeyY',
+				'83',
+				'2',
+				'0',
+				'36',
+				'25',
+				'Tab',
+				'ShiftLeft',
+				'IntlBackslash',
 			];
 			var ctrlDat = DEFAULT_CTRL_DAT.slice();
 

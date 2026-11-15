@@ -25,7 +25,7 @@
 	const STORAGE_KEY = 'zztetris_auto_lock_v1';
 	const TICK_MS = 16; // TETR.IO advances its lock timer once per 60 Hz frame.
 	const DEFAULTS = {
-		enabled: false,
+		enabled: true,
 		delayMs: 500,
 		resets: 15,
 		infinite: false,
@@ -76,7 +76,8 @@
 		const resets =
 			saved.resets === undefined ? DEFAULTS.resets : Number(saved.resets);
 		return {
-			enabled: saved.enabled === true,
+			enabled:
+				saved.enabled === undefined ? DEFAULTS.enabled : saved.enabled === true,
 			delayMs: clamp(
 				Number.isFinite(delay) ? delay : DEFAULTS.delayMs,
 				0,
@@ -87,7 +88,8 @@
 				0,
 				100
 			),
-			infinite: saved.infinite === true,
+			infinite:
+				saved.infinite === undefined ? DEFAULTS.infinite : saved.infinite === true,
 		};
 	}
 

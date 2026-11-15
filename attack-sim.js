@@ -9,7 +9,7 @@
 
 	const STORAGE_KEY = 'zztetris_attack_sim_v1';
 	const MAX_SIZE = 20;
-	const DEFAULT_SIZE_WEIGHTS = '1';
+	const DEFAULT_SIZE_WEIGHTS = '4,3,2,1,1,0.5';
 	const MAX_APM = 300;
 	const MAX_PENDING = 100;
 	// TETR.IO's standard garbage cap is 8 lines tanked per lock.
@@ -19,10 +19,10 @@
 	const WELL_MODES = new Set(['4w', '4w4res', '4w5res', '4w6res', '3w']);
 	const DEFAULT_SETTINGS = {
 		enabled: false,
-		apm: 30,
+		apm: 40,
 		sizeWeights: DEFAULT_SIZE_WEIGHTS,
-		timeRandom: 0,
-		holeMessiness: 0,
+		timeRandom: 100,
+		holeMessiness: 100,
 	};
 
 	let enabled = false;

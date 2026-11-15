@@ -50,13 +50,13 @@
 		ArrowRight: 'R',
 		ArrowDown: 'SD',
 		Space: 'HD',
-		ShiftLeft: 'HL',
+		KeyC: 'HL',
 		KeyX: 'CW',
 		KeyZ: 'CCW',
-		KeyC: 'R180',
-		KeyR: 'RE',
-		KeyT: 'UNDO',
-		KeyY: 'REDO',
+		ArrowUp: 'R180',
+		Backquote: 'RE',
+		'Ctrl+KeyZ': 'UNDO',
+		'Ctrl+KeyY': 'REDO',
 	};
 
 	function deepCopy(value) {
@@ -1290,9 +1290,9 @@
 
 	function getUserConfig() {
 		const defaults = {
-			das: 160,
-			arr: 30,
-			sdr: 15,
+			das: 83,
+			arr: 2,
+			sdr: 0,
 			ctrl: Object.assign({}, DEFAULT_CTRL),
 		};
 		try {
@@ -1320,9 +1320,9 @@
 			for (let i = 0; i < 11; i++) {
 				if (stored[i]) ctrl[stored[i]] = codes[i];
 			}
-			ctrl[stored[16] || 'KeyO'] = 'RESET_SESSION';
-			ctrl[stored[17] || 'KeyU'] = 'RESET_QUEUE';
-			ctrl[stored[18] || 'KeyI'] = 'RESET_QUEUE_HOLD';
+			ctrl[stored[16] || 'Tab'] = 'RESET_SESSION';
+			ctrl[stored[17] || 'ShiftLeft'] = 'RESET_QUEUE';
+			ctrl[stored[18] || 'IntlBackslash'] = 'RESET_QUEUE_HOLD';
 			const das = parseInt(stored[11], 10);
 			const arr = parseInt(stored[12], 10);
 			const sdr = parseInt(stored[13], 10);

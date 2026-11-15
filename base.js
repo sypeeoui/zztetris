@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=46f3af66', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=1e21d0c9', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -95,16 +95,16 @@ var ctrl = { // default controls
 	ArrowRight: 'R',
 	ArrowDown: 'SD',
 	Space: 'HD',
-	ShiftLeft: 'HL',
+	KeyC: 'HL',
 	KeyX: 'CW',
 	KeyZ: 'CCW',
-	KeyC: 'R180',
-	KeyR: 'RE',
-	KeyT: 'UNDO',
-	KeyY: 'REDO',
-	KeyO: 'RESET_SESSION',
-	KeyU: 'RESET_QUEUE',
-	KeyI: 'RESET_QUEUE_HOLD',
+	ArrowUp: 'R180',
+	Backquote: 'RE',
+	'Ctrl+KeyZ': 'UNDO',
+	'Ctrl+KeyY': 'REDO',
+	Tab: 'RESET_SESSION',
+	ShiftLeft: 'RESET_QUEUE',
+	IntlBackslash: 'RESET_QUEUE_HOLD',
 
 };
 
@@ -164,14 +164,14 @@ var imgs = { // piece images
 };
 
 // default settings
-var cellSize = 20; // pixels
+var cellSize = 36; // pixels
 var boardSize = [10, 40];
 var hiddenRows = 20; // starts from the top
 
-var DAS = 160;
-var ARR = 30;
-var SDR = 15;
-var audiolevel = 100;
+var DAS = 83;
+var ARR = 2;
+var SDR = 0;
+var audiolevel = 25;
 
 //* client side config storage
 
@@ -196,14 +196,14 @@ if (LS.config && LS.version == '2023-05-02a') {
 
 	ctrl = {};
 	for (let i = 0; i < 11; i++) {
-		const key = parseBinding(CTRLS[i]) || DEFAULT_CTRL[codes[i]] || Object.keys(DEFAULT_CTRL)[i];
+		const key = parseBinding(CTRLS[i]) || Object.keys(DEFAULT_CTRL)[i];
 		if (key) ctrl[key] = codes[i];
 	}
 	// Reset keybinds were appended to the config array; older configs fall
 	// back to the defaults.
-	ctrl[parseBinding(CTRLS[16]) || DEFAULT_CTRL.RESET_SESSION || 'KeyO'] = 'RESET_SESSION';
-	ctrl[parseBinding(CTRLS[17]) || DEFAULT_CTRL.RESET_QUEUE || 'KeyU'] = 'RESET_QUEUE';
-	ctrl[parseBinding(CTRLS[18]) || DEFAULT_CTRL.RESET_QUEUE_HOLD || 'KeyI'] = 'RESET_QUEUE_HOLD';
+	ctrl[parseBinding(CTRLS[16]) || 'Tab'] = 'RESET_SESSION';
+	ctrl[parseBinding(CTRLS[17]) || 'ShiftLeft'] = 'RESET_QUEUE';
+	ctrl[parseBinding(CTRLS[18]) || 'IntlBackslash'] = 'RESET_QUEUE_HOLD';
 	DAS = parseInt(CTRLS[11]);
 	ARR = parseInt(CTRLS[12]);
 	SDR = parseInt(CTRLS[13]);
@@ -216,8 +216,8 @@ if (LS.config && LS.version == '2023-05-02a') {
 	// No config found or outdated version, make new
     console.log("No Config Found");
 	let codes = Object.keys(ctrl).slice(0, 11); // Deafult keys
-	codes.push('160', '30', '15', '20','100'); // Handling settings
-	codes.push('KeyO', 'KeyU', 'KeyI'); // Reset keybinds
+	codes.push('83', '2', '0', '36', '25'); // Handling settings
+	codes.push('Tab', 'ShiftLeft', 'IntlBackslash'); // Reset keybinds
 	LS.config = JSON.stringify(codes);
 	// The mobile shell has its own settings sheet; don't block the first load
 	// with the desktop alert.
@@ -299,7 +299,7 @@ var pattern = ctx.createPattern(gridCvs, 'repeat');
 // the page. The settings popup writes LS.config on every change, so the game
 // can pick them up live and keep the current board and session intact.
 function setCellSize(size) {
-	const next = Math.max(3, parseInt(size, 10) || 20);
+	const next = Math.max(3, parseInt(size, 10) || 36);
 	if (next === cellSize) return;
 	cellSize = next;
 	const canvas = document.getElementById('b');
@@ -330,23 +330,23 @@ function applyStoredConfig() {
 
 	if (!Array.isArray(CTRLS)) {
 		ctrl = Object.assign({}, DEFAULT_CTRL);
-		DAS = 160;
-		ARR = 30;
-		SDR = 15;
-		audiolevel = 100;
-		setCellSize(20);
+		DAS = 83;
+		ARR = 2;
+		SDR = 0;
+		audiolevel = 25;
+		setCellSize(36);
 		return;
 	}
 
 	const codes = ['L', 'R', 'SD', 'HD', 'HL', 'CW', 'CCW', 'R180', 'RE', 'UNDO', 'REDO'];
 	const nextCtrl = {};
 	for (let i = 0; i < 11; i++) {
-		const key = parseBinding(CTRLS[i]) || DEFAULT_CTRL[codes[i]];
+		const key = parseBinding(CTRLS[i]) || Object.keys(DEFAULT_CTRL)[i];
 		if (key) nextCtrl[key] = codes[i];
 	}
-	nextCtrl[parseBinding(CTRLS[16]) || DEFAULT_CTRL.RESET_SESSION || 'KeyO'] = 'RESET_SESSION';
-	nextCtrl[parseBinding(CTRLS[17]) || DEFAULT_CTRL.RESET_QUEUE || 'KeyU'] = 'RESET_QUEUE';
-	nextCtrl[parseBinding(CTRLS[18]) || DEFAULT_CTRL.RESET_QUEUE_HOLD || 'KeyI'] = 'RESET_QUEUE_HOLD';
+	nextCtrl[parseBinding(CTRLS[16]) || 'Tab'] = 'RESET_SESSION';
+	nextCtrl[parseBinding(CTRLS[17]) || 'ShiftLeft'] = 'RESET_QUEUE';
+	nextCtrl[parseBinding(CTRLS[18]) || 'IntlBackslash'] = 'RESET_QUEUE_HOLD';
 	ctrl = nextCtrl;
 
 	const das = parseInt(CTRLS[11], 10);
