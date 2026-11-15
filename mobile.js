@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-ca7a7fb4';
+	const SW_CACHE_VERSION = 'zztetris-mobile-d8c329c4';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -1267,6 +1267,7 @@
 			'<button class="zzTab zz-active" data-tab="handling">Handling</button>' +
 			'<button class="zzTab" data-tab="portrait">Portrait</button>' +
 			'<button class="zzTab" data-tab="landscape">Landscape</button>' +
+			'<button class="zzTab" data-tab="audio">Audio</button>' +
 			'<button class="zzTab" data-tab="app">App</button>' +
 			'</div>' +
 			'<div class="zzTabPanel zz-active" data-panel="handling">' +
@@ -1297,6 +1298,15 @@
 			'<div class="zzSheetRow"><label>Opacity</label><input type="range" id="zzBtnOpacity" min="20" max="100" step="1"><input type="number" class="zzNum" id="zzBtnOpacityNum" min="20" max="100" step="1" inputmode="numeric"></div>' +
 			'<div class="zzSheetRow"><label>Haptics</label><input type="checkbox" id="zzHaptics"></div>' +
 			'<button class="zzSheetBtn" id="zzEditLayout">Edit layout (buttons)</button>' +
+			'</div>' +
+			'<div class="zzTabPanel" data-panel="audio">' +
+			'<div class="zzSheetRow"><label>Sound pack</label><select id="zzSoundPack"></select></div>' +
+			'<div class="zzSheetRow"><label>Volume</label><input type="range" id="zzAudioLevel" min="0" max="100" step="1"><input type="number" class="zzNum" id="zzAudioLevelNum" min="0" max="100" step="1" inputmode="numeric"></div>' +
+			'<div class="zzSheetRow"><label>Extra cues</label><input type="checkbox" id="zzSoundCues"></div>' +
+			'<button class="zzSheetBtn" id="zzSoundPackImport">Load custom pack…</button>' +
+			'<input id="zzSoundPackFiles" type="file" accept="audio/*" multiple webkitdirectory hidden>' +
+			'<button class="zzSheetBtn zzSheetBtn--danger" id="zzSoundPackClear">Clear custom pack</button>' +
+			'<p class="zzHint" id="zzSoundPackStatus"></p>' +
 			'</div>' +
 			'<div class="zzTabPanel" data-panel="app">' +
 			'<button class="zzSheetBtn" id="zzInstallBtn" hidden>Install app</button>' +
@@ -1330,6 +1340,7 @@
 		}
 
 		setupHandling();
+		setupAudio();
 		buildMapCard($('zzLeftMap'), config.portrait.left, 'left');
 		buildMapCard($('zzRightMap'), config.portrait.right, 'right');
 		setupThresholds();
@@ -1426,6 +1437,113 @@
 		values[13] = String(SDR);
 		LS.config = JSON.stringify(values);
 		LS.version = '2023-05-02a';
+	}
+
+	function setupAudio() {
+		const packSelect = $('zzSoundPack');
+		const cues = $('zzSoundCues');
+		const level = $('zzAudioLevel');
+		const levelNum = $('zzAudioLevelNum');
+		const importBtn = $('zzSoundPackImport');
+		const filesInput = $('zzSoundPackFiles');
+		const clearBtn = $('zzSoundPackClear');
+		const status = $('zzSoundPackStatus');
+		if (!packSelect || !level || !levelNum) return;
+
+		function currentLevel() {
+			let value = 100;
+			try {
+				const values = JSON.parse(LS.config || '[]');
+				const parsed = parseInt(values[15], 10);
+				if (Number.isFinite(parsed)) value = parsed;
+			} catch (error) {
+				// Use the default.
+			}
+			return Math.max(0, Math.min(100, value));
+		}
+
+		function saveLevel(value) {
+			const clamped = Math.max(0, Math.min(100, Math.round(value)));
+			level.value = clamped;
+			levelNum.value = clamped;
+			window.audiolevel = clamped;
+			try {
+				const values = JSON.parse(LS.config || '[]');
+				values[15] = String(clamped);
+				LS.config = JSON.stringify(values);
+				LS.version = '2023-05-02a';
+			} catch (error) {
+				// Storage can be unavailable.
+			}
+			window.applyStoredConfig?.();
+		}
+
+		function refreshPacks() {
+			const pack = window.ZZSoundPack;
+			if (!pack) return;
+			const settings = pack.getSettings();
+			packSelect.innerHTML = '';
+			for (const item of pack.listPacks()) {
+				const option = document.createElement('option');
+				option.value = item.id;
+				option.textContent = item.label;
+				packSelect.appendChild(option);
+			}
+			packSelect.value = settings.pack;
+			if (cues) {
+				const selected = pack
+					.listPacks()
+					.find((item) => item.id === settings.pack);
+				cues.checked = settings.cues && (!selected || selected.cues);
+				cues.disabled = !selected || !selected.cues;
+			}
+			const custom = pack.getCustomStatus();
+			if (status) {
+				status.textContent = custom.count
+					? `${custom.count} custom sounds loaded.`
+					: 'No custom pack loaded.';
+			}
+			if (clearBtn) clearBtn.disabled = custom.count === 0;
+		}
+
+		const initial = currentLevel();
+		level.value = initial;
+		levelNum.value = initial;
+		level.addEventListener('input', () => saveLevel(Number(level.value)));
+		levelNum.addEventListener('input', () => saveLevel(Number(levelNum.value)));
+		levelNum.addEventListener('change', () => saveLevel(Number(levelNum.value)));
+
+		packSelect.addEventListener('change', () => {
+			window.ZZSoundPack?.setPack(packSelect.value);
+		});
+		if (cues) {
+			cues.addEventListener('change', () => {
+				window.ZZSoundPack?.setCues(cues.checked);
+			});
+		}
+		if (importBtn && filesInput) {
+			importBtn.addEventListener('click', () => filesInput.click());
+			filesInput.addEventListener('change', async () => {
+				const files = filesInput.files;
+				if (!files || !files.length) return;
+				try {
+					const result = await window.ZZSoundPack.importFiles(files);
+					if (status) status.textContent = `Loaded ${result.loaded} sounds.`;
+				} catch (error) {
+					if (status) status.textContent = error.message;
+				}
+				filesInput.value = '';
+				refreshPacks();
+			});
+		}
+		if (clearBtn) {
+			clearBtn.addEventListener('click', async () => {
+				await window.ZZSoundPack?.clearCustom();
+				refreshPacks();
+			});
+		}
+		window.ZZSoundPack?.onChange(refreshPacks);
+		refreshPacks();
 	}
 
 	function buildMapCard(container, padConfig, side) {

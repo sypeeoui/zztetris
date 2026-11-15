@@ -23,8 +23,8 @@
 		</script>
 		<link rel="icon" href="./assets/pieceSprite/z.png" />
 		<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=f428c787" />
-		<link rel="stylesheet" type="text/css" href="styles/replay.css?v=aa4ebe17" />
-		<link rel="stylesheet" type="text/css" href="styles/replay-mobile.css?v=88c82a6a" />
+		<link rel="stylesheet" type="text/css" href="styles/replay.css?v=b7d0e65f" />
+		<link rel="stylesheet" type="text/css" href="styles/replay-mobile.css?v=e844a62b" />
 	</head>
 	<body>
 		<header class="replay-header">
@@ -302,7 +302,7 @@
 		<div id="statsSettings" class="replay-settings" hidden>
 			<div class="replay-settings-panel">
 				<div class="replay-settings-header">
-					<h2>Visible stats</h2>
+					<h2>Replay settings</h2>
 					<button id="statsCloseBtn" class="button" type="button">Close</button>
 				</div>
 				<label class="replay-settings-scope">
@@ -318,6 +318,31 @@
 						<input id="replayMute" type="checkbox" />
 						<span>Mute replay sounds</span>
 					</label>
+					<label class="replay-settings-scope">
+						<span>Sound pack</span>
+						<select id="replaySoundPack" class="replay-select"></select>
+					</label>
+					<label class="replay-settings-check">
+						<input id="replayCues" type="checkbox" />
+						<span>Combo / B2B / danger cues</span>
+					</label>
+					<div class="replay-settings-pack-actions">
+						<button id="replaySoundPackImport" class="button" type="button">
+							Load custom pack…
+						</button>
+						<button id="replaySoundPackClear" class="button" type="button">
+							Clear custom
+						</button>
+					</div>
+					<input
+						id="replaySoundPackFiles"
+						type="file"
+						accept="audio/*"
+						multiple
+						webkitdirectory
+						hidden
+					/>
+					<p id="replaySoundPackStatus" class="replay-settings-hint"></p>
 				</div>
 				<div id="statsCheckboxes" class="replay-settings-list"></div>
 				<div class="replay-settings-actions">
@@ -338,7 +363,8 @@
 		<script defer src="replay-engine.js?v=db2dd99e"></script>
 		<script defer src="replay-common.js?v=3aefa415"></script>
 		<script defer src="replay-api.js?v=b9cad92a"></script>
-		<script defer src="replay-audio.js?v=d26c9d5d"></script>
-		<script defer src="replay.js?v=8320c992"></script>
+		<script defer src="sound-pack.js?v=45cb7b6a"></script>
+		<script defer src="replay-audio.js?v=86555a50"></script>
+		<script defer src="replay.js?v=a991c57a"></script>
 	</body>
 </html>

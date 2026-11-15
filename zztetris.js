@@ -111,6 +111,7 @@ function restart() {
 	combo = -1;
     oldb2b = b2b;
 	b2b = -1;
+	topOutSoundPlayed = false;
 	newPiece();
 	window.ZZStats?.onRestart();
 	window.ZZAttackSim?.onRestart();

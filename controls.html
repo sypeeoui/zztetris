@@ -2,6 +2,7 @@
 <html>
 	<head>
 		<meta charset="UTF-8" />
+		<link rel="icon" href="./assets/pieceSprite/z.png" />
 		<title>ZZTetris — Game Settings</title>
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 		<style>
@@ -189,6 +190,33 @@
 				font-size: 12px;
 				margin-top: 8px;
 			}
+			.sound-pack-row {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				flex-wrap: wrap;
+			}
+			.sound-pack-row select {
+				min-width: 220px;
+			}
+			.sound-pack-check {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 13px;
+				cursor: pointer;
+			}
+			.sound-pack-actions {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
+				margin-top: 10px;
+			}
+			.sound-pack-status {
+				color: #9a9a9a;
+				font-size: 12px;
+				margin: 8px 0 0;
+			}
 			kbd.capturing {
 				background-color: #4caf50;
 				border-color: #4caf50;
@@ -360,6 +388,41 @@
 				</section>
 
 				<section class="settings-card settings-card--wide">
+					<h2>Sound Pack</h2>
+					<div class="sound-pack-row">
+						<label for="soundPackSelect">Pack</label>
+						<select id="soundPackSelect"></select>
+						<label class="sound-pack-check">
+							<input type="checkbox" id="soundPackCues" />
+							Combo / B2B / danger cues
+						</label>
+					</div>
+					<div class="sound-pack-actions">
+						<button type="button" class="button" id="soundPackImportBtn">
+							Load custom pack…
+						</button>
+						<button type="button" class="button" id="soundPackClearBtn">
+							Clear custom
+						</button>
+						<input
+							id="soundPackFiles"
+							type="file"
+							accept="audio/*"
+							multiple
+							webkitdirectory
+							hidden
+						/>
+					</div>
+					<p class="sound-pack-status" id="soundPackStatus"></p>
+					<p class="stats-hint">
+						Custom packs are folders of WAV/OGG/MP3 files named after the
+						sound (move, rotate, harddrop, clear, combo_1, btb_break,
+						danger, …). TETR.IO PLUS "replace multiple by filename" packs
+						work.
+					</p>
+				</section>
+
+				<section class="settings-card settings-card--wide">
 					<h2>Session Stats</h2>
 					<div class="stats-toolbar">
 						<label><input type="checkbox" id="statsShowPanel" checked /> Show session panel</label>
@@ -425,6 +488,7 @@
 		<script src="practice-settings.js?v=43a1be04"></script>
 		<script src="stats-config.js?v=294eb553"></script>
 		<script src="settings-backup.js?v=ae20c5fc"></script>
+		<script src="sound-pack.js?v=45cb7b6a"></script>
 		<script>
 			const print = console.log;
 			const LS = localStorage;
@@ -710,6 +774,67 @@
 			finesseSoundInput.addEventListener('change', saveStatsConfig);
 			exemptSpinsInput.addEventListener('change', saveStatsConfig);
 			finesseSoundSelect.addEventListener('change', saveStatsConfig);
+
+			// Sound pack selection.
+			const soundPackSelect = document.getElementById('soundPackSelect');
+			const soundPackCues = document.getElementById('soundPackCues');
+			const soundPackImportBtn = document.getElementById('soundPackImportBtn');
+			const soundPackClearBtn = document.getElementById('soundPackClearBtn');
+			const soundPackFiles = document.getElementById('soundPackFiles');
+			const soundPackStatus = document.getElementById('soundPackStatus');
+
+			function refreshSoundPacks() {
+				const pack = window.ZZSoundPack;
+				if (!pack) return;
+				const settings = pack.getSettings();
+				soundPackSelect.innerHTML = '';
+				for (const item of pack.listPacks()) {
+					const option = document.createElement('option');
+					option.value = item.id;
+					option.textContent = item.label;
+					soundPackSelect.appendChild(option);
+				}
+				soundPackSelect.value = settings.pack;
+				const selected = pack
+					.listPacks()
+					.find((item) => item.id === settings.pack);
+				soundPackCues.checked =
+					settings.cues && (!selected || selected.cues);
+				soundPackCues.disabled = !selected || !selected.cues;
+				const status = pack.getCustomStatus();
+				soundPackStatus.textContent = status.count
+					? `${status.count} custom sounds loaded.`
+					: 'No custom pack loaded.';
+				soundPackClearBtn.disabled = status.count === 0;
+			}
+
+			soundPackSelect.addEventListener('change', () => {
+				window.ZZSoundPack?.setPack(soundPackSelect.value);
+			});
+			soundPackCues.addEventListener('change', () => {
+				window.ZZSoundPack?.setCues(soundPackCues.checked);
+			});
+			soundPackImportBtn.addEventListener('click', () => {
+				soundPackFiles.click();
+			});
+			soundPackFiles.addEventListener('change', async () => {
+				const files = soundPackFiles.files;
+				if (!files || !files.length) return;
+				try {
+					const result = await window.ZZSoundPack.importFiles(files);
+					soundPackStatus.textContent = `Loaded ${result.loaded} sounds.`;
+				} catch (error) {
+					soundPackStatus.textContent = error.message;
+				}
+				soundPackFiles.value = '';
+				refreshSoundPacks();
+			});
+			soundPackClearBtn.addEventListener('click', async () => {
+				await window.ZZSoundPack?.clearCustom();
+				refreshSoundPacks();
+			});
+			window.ZZSoundPack?.onChange(refreshSoundPacks);
+			refreshSoundPacks();
 
 			document.getElementById('statsSelectAll').addEventListener('click', () => {
 				statCheckboxes.forEach((checkbox) => {

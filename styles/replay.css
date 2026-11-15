@@ -365,6 +365,16 @@ body {
 	font-size: 10px;
 }
 
+.replay-round-select {
+	display: none;
+	font-size: 11px;
+	padding: 2px 6px;
+	background: #111;
+	color: #fff;
+	border: 1px solid var(--replay-border);
+	border-radius: 4px;
+}
+
 .replay-player-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -650,6 +660,18 @@ body {
 .replay-settings-volume input[type='range'] {
 	flex: 1;
 	accent-color: var(--replay-accent);
+}
+
+.replay-settings-pack-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.replay-settings-hint {
+	margin: 0;
+	font-size: 11px;
+	color: var(--replay-muted);
 }
 
 html.replay-immersive .replay-header,

@@ -1,5 +1,16 @@
 # Third-party notices
 
+## TETR.IO sound effects
+
+- Source: TETR.IO, https://tetr.io/
+- Files: `assets/sfx/tetrio/*.mp3`
+- Copyright: © osk / TETR.IO
+- Used by: the optional `TETR.IO (official)` sound pack in `sound-pack.js`.
+
+These sound effects are the property of TETR.IO and its licensors. They are
+included as an optional sound pack and are not covered by this project's
+license. TETR.IO is a trademark of osk.
+
 ## @haelp/teto (Triangle.js)
 
 - Version: 4.2.8

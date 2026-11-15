@@ -60,10 +60,15 @@
 	function playFinesseSound() {
 		if (!config.finesseSound) return;
 		const name = config.finesseSoundName || 'FinesseFault';
+		const volume = (typeof audiolevel === 'number' ? audiolevel : 100) / 100;
+		if (window.ZZSoundPack) {
+			window.ZZSoundPack.play(name, { volume });
+			return;
+		}
 		try {
 			const sound = soundCache[name] || (soundCache[name] = new Audio('assets/sfx/' + name + '.wav'));
 			sound.currentTime = 0;
-			sound.volume = (typeof audiolevel === 'number' ? audiolevel : 100) / 100;
+			sound.volume = volume;
 			const promise = sound.play();
 			if (promise && typeof promise.catch === 'function') promise.catch(() => {});
 		} catch (error) {

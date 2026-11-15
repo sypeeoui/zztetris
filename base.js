@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=0178b503', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=c51e8e63', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -273,6 +273,7 @@ var dasID = 0;
 var sdINT = (dasINT = null);
 // Mobile pause state. The mobile shell sets this while its menu is open.
 var zzPaused = false;
+var topOutSoundPlayed = false;
 var xPOS = spawn[0];
 var yPOS = spawn[1];
 var xGHO = spawn[0];
@@ -989,6 +990,10 @@ function checkTopOut() {
 			if (p[r][c] != 0) {
 				if (board[r + yPOS][c + xPOS].t == 1) {
 					notify('TOP OUT');
+					if (!topOutSoundPlayed) {
+						topOutSoundPlayed = true;
+						playSnd('TopOut');
+					}
 				}
 			}
 		}
@@ -1060,6 +1065,7 @@ function notify(text) {
 
 function undo() {
 	if (histPos > 0) {
+		playSnd('Undo');
 		histPos--;
 		board = JSON.parse(hist[histPos]['board']);
 		queue = JSON.parse(hist[histPos]['queue']);
@@ -1097,6 +1103,7 @@ function undo() {
 
 function redo() {
 	if (histPos < hist.length - 1) {
+		playSnd('Redo');
 		board = JSON.parse(hist[histPos + 1]['board']);
 		queue = JSON.parse(hist[histPos + 1]['queue']);
 		holdP = hist[histPos + 1]['hold'];
@@ -4239,6 +4246,20 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	window.__zzHandlingInterval = setInterval(handleShiftTick, HANDLING_STEP);
 
 	function playSnd(sfx, overlap) {
+		if (window.ZZSoundPack) {
+			const category = /^Clear|^PerfectClear/.test(sfx)
+				? 'clear'
+				: /^Combo/.test(sfx)
+					? 'combo'
+					: /^B2B/.test(sfx)
+						? 'b2b'
+						: undefined;
+			window.ZZSoundPack.play(sfx, {
+				volume: audiolevel / 100,
+				category,
+			});
+			return;
+		}
 		const s = sfxCache[sfx] ??= new Audio(`assets/sfx/${sfx}.wav`);
 		if (overlap) {
 			s.currentTime = 0
@@ -4599,6 +4620,8 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 	};
 
 	function checkLines() {
+		const comboBefore = combo;
+		const b2bBefore = b2b;
 		tspin = false;
 		mini = false;
 		allspinMini = false;
@@ -4745,8 +4768,30 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		if (pc) text += '\nPERFECT\nCLEAR!';
 		if (b2b > 0 && b2bEligible) text += ' x' + b2b.toString();
 		if (text != '') notify(text);
-		if (b2bEligible) playSnd('ClearTetra', true);
-		if (pc) playSnd('PerfectClear', 1);
+		if (cleared > 0) {
+			if (pc) {
+				playSnd('PerfectClear');
+			} else if (tspin || mini) {
+				playSnd('ClearSpin');
+			} else if (cleared === 4) {
+				playSnd('ClearQuad');
+			} else {
+				playSnd('ClearLine');
+			}
+			if (!pc && b2bEligible && b2b > 1) {
+				playSnd('ClearB2B');
+				playSnd('B2B' + Math.min(3, b2b));
+			}
+			if (combo > 0) {
+				playSnd('Combo' + Math.min(16, combo));
+			}
+		}
+		if (b2bBefore > 4 && b2b === 0 && cleared > 0) {
+			playSnd('B2BBreak');
+		}
+		if (comboBefore >= 1 && cleared === 0) {
+			playSnd('ComboBreak');
+		}
 		syncEvalChainInputsFromGame();
 
         return cleared;
@@ -4765,8 +4810,42 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		}
 	}
 
+	function dangerStackHeight() {
+		const wells = {
+			'4w': { start: 3, width: 4 },
+			'4w4res': { start: 3, width: 4 },
+			'4w5res': { start: 3, width: 4 },
+			'4w6res': { start: 3, width: 4 },
+			'3w': { start: 3, width: 3 },
+		};
+		const currentMode = typeof mode !== 'undefined' ? mode : 'practice';
+		const well = wells[currentMode];
+		const start = well ? well.start : 0;
+		const end = well ? well.start + well.width : boardSize[0];
+		for (let y = 0; y < board.length; y++) {
+			for (let x = start; x < end; x++) {
+				if (board[y][x] && board[y][x].t !== 0) {
+					return board.length - y;
+				}
+			}
+		}
+		return 0;
+	}
+
 	function render() {
 		checkShift();
+
+		if (!zzPaused && window.ZZSoundPack) {
+			const height = dangerStackHeight();
+			const dangerLine = boardSize[1] - hiddenRows - 4;
+			if (height >= dangerLine) {
+				window.ZZSoundPack.playDanger(
+					'game',
+					height >= dangerLine + 2 ? 'hyper' : 'normal',
+					{ volume: audiolevel / 100 }
+				);
+			}
+		}
 
 		if (evalState.enabled) {
 			const now = Date.now();

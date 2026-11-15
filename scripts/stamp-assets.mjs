@@ -33,6 +33,7 @@ const SCAN_FILES = [
 	'replay.js',
 	'replay-api.js',
 	'replay-audio.js',
+	'sound-pack.js',
 	'replay-practice.js',
 	'replay-common.js',
 	'attack-sim.js',

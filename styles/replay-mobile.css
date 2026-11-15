@@ -176,6 +176,10 @@ html.mobile .replay-round-winner {
 	font-size: 9px;
 }
 
+html.mobile .replay-playback {
+	padding: 6px 8px;
+}
+
 /* Play area and side preview */
 html.mobile .replay-play-area {
 	display: flex;
@@ -306,8 +310,8 @@ html.mobile .replay-player-card--active {
 }
 
 html.mobile .replay-player-header {
-	gap: 4px;
-	padding-bottom: 4px;
+	gap: 3px;
+	padding-bottom: 1px;
 }
 
 html.mobile .replay-player-name {
@@ -609,14 +613,86 @@ html.mobile.replay-immersive .replay-immersive-controls {
 
 /* Landscape: both players side by side */
 @media (orientation: landscape) {
+	html.mobile .replay-main {
+		padding: 6px 6px 0;
+	}
+
+	html.mobile .replay-view {
+		gap: 0;
+	}
+
 	html.mobile .replay-play-area {
 		display: block;
 	}
 
-	html.mobile .replay-player-grid {
+	html.mobile .replay-play-area .replay-player-grid {
 		display: flex;
 		gap: 6px;
 		align-items: stretch;
+	}
+
+	html.mobile .replay-round-tabs {
+		display: none;
+	}
+
+	html.mobile .replay-round-select {
+		display: inline-block;
+	}
+
+	html.mobile .replay-header {
+		padding: calc(4px + env(safe-area-inset-top)) 6px 4px;
+	}
+
+	html.mobile .replay-match-header {
+		padding: 2px 6px;
+		gap: 0 6px;
+	}
+
+	html.mobile .replay-match-title {
+		font-size: 12px;
+	}
+
+	html.mobile .replay-match-score {
+		font-size: 10px;
+	}
+
+	html.mobile .replay-player-card {
+		padding: 2px;
+		gap: 2px;
+	}
+
+	html.mobile .replay-player-header {
+		padding-bottom: 1px;
+		gap: 2px;
+	}
+
+	html.mobile .replay-player-name {
+		font-size: 11px;
+	}
+
+	html.mobile .replay-player-result {
+		font-size: 7px;
+		padding: 0 3px;
+	}
+
+	html.mobile .replay-practice-btn {
+		font-size: 7px;
+		padding: 1px 3px;
+	}
+
+	html.mobile .replay-bottom-dock {
+		gap: 2px;
+	}
+
+	html.mobile .replay-playback {
+		padding: 4px 6px;
+		gap: 2px;
+	}
+
+	html.mobile .replay-playback-row .button {
+		padding: 4px 4px;
+		font-size: 10px;
+		min-width: 30px;
 	}
 
 	html.mobile .replay-player-card {
@@ -641,8 +717,8 @@ html.mobile.replay-immersive .replay-immersive-controls {
 
 	html.mobile .replay-left-column {
 		display: block;
-		width: 30px;
-		flex: 0 0 30px;
+		width: 40px;
+		flex: 0 0 40px;
 	}
 
 	html.mobile .replay-left-column .queue {
@@ -663,8 +739,8 @@ html.mobile.replay-immersive .replay-immersive-controls {
 
 	html.mobile .replay-right-column {
 		display: block;
-		width: 30px;
-		flex: 0 0 30px;
+		width: 40px;
+		flex: 0 0 40px;
 		justify-self: auto;
 	}
 
@@ -690,30 +766,7 @@ html.mobile.replay-immersive .replay-immersive-controls {
 		display: none;
 	}
 
-	html.mobile .replay-match-header {
-		padding: 4px 8px;
-	}
-
-	html.mobile .replay-match-title {
-		font-size: 13px;
-	}
-
-	html.mobile .replay-round-tabs {
-		padding-bottom: 0;
-	}
-
-	html.mobile .replay-round-tab {
-		padding: 2px 6px;
-		font-size: 10px;
-	}
-
 	html.mobile .replay-playback-meta {
 		display: none;
-	}
-
-	html.mobile .replay-playback-row .button {
-		padding: 6px 5px;
-		font-size: 11px;
-		min-width: 34px;
 	}
 }
