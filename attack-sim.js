@@ -321,8 +321,9 @@
 			typeof root.addInfiniteGarbage === 'function'
 		) {
 			// 4W/3W boards have walls outside the well; reuse the mode's
-			// wall-preserving garbage inserter.
-			root.addInfiniteGarbage(total);
+			// wall-preserving garbage inserter. The attack simulator always
+			// adds fresh well garbage.
+			root.addInfiniteGarbage(total, true);
 		} else {
 			for (const row of rows) {
 				root.addGarbageRows(row.column, row.amount, row.size);

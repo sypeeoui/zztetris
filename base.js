@@ -4754,13 +4754,14 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			addPracticeGarbage(permanentLinesCleared, messiness, true);
 		}
 
-		// 4W/3W only keep an endless garbage supply when the user asked for
-		// it: Permanent practice garbage or the attack simulator.
+		// 4W/3W always keep their side walls. The well only gets fresh
+		// garbage when the user asked for endless garbage: Permanent practice
+		// garbage or the attack simulator.
 		const endlessGarbage =
 			window.ZZAttackSim?.isActive?.() ||
 			!!document.getElementById('practicePermanent')?.checked;
-		if (endlessGarbage && typeof addInfiniteGarbage === 'function') {
-			addInfiniteGarbage(garbageLinesCleared);
+		if (typeof addInfiniteGarbage === 'function') {
+			addInfiniteGarbage(garbageLinesCleared, endlessGarbage);
 		}
 		var cleared = clearedIndexes.length;
 

@@ -134,10 +134,11 @@ function garbageHeight() {
 	return 0;
 }
 
-// 4W and 3W practice modes keep a constant garbage stack: every cleared
-// garbage line is replaced by a fresh line at the bottom of the well. The
-// walls outside the well are preserved.
-function addInfiniteGarbage(lines) {
+// 4W and 3W practice modes always keep their side walls. When `addGarbage`
+// is true, each cleared line is also replaced by a fresh garbage line at the
+// bottom of the well; when false, the well is left empty so the stack can
+// run out without the mode turning into a 10-wide board.
+function addInfiniteGarbage(lines, addGarbage = true) {
 	if (!lines) return;
 	const wells = {
 		'4w': { start: 3, width: 4 },
@@ -150,11 +151,17 @@ function addInfiniteGarbage(lines) {
 	if (!well) return;
 
 	for (let i = 0; i < lines; i++) {
-		const hole = well.start + Math.floor(Math.random() * well.width);
+		const hole = addGarbage
+			? well.start + Math.floor(Math.random() * well.width)
+			: -1;
 		const row = [];
 		for (let col = 0; col < boardSize[0]; col++) {
 			if (col >= well.start && col < well.start + well.width) {
-				row.push(col === hole ? { t: 0, c: '' } : { t: 1, c: 'X' });
+				row.push(
+					addGarbage && col !== hole
+						? { t: 1, c: 'X' }
+						: { t: 0, c: '' }
+				);
 			} else {
 				row.push({ t: 1, c: 'X' });
 			}
