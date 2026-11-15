@@ -5,25 +5,25 @@
 	<script src="io.js"></script>
 	<script src="utils.js?v=0f473dcb"></script>
 	<script src="tetris-fumen.js"></script>
-	<script defer src="stats-config.js?v=294eb553"></script>
-	<script defer src="stats-core.js?v=b55729b4"></script>
+	<script defer src="stats-config.js?v=87260c9e"></script>
+	<script defer src="stats-core.js?v=c13feafa"></script>
 	<script defer src="keybinds.js?v=d3dc5230"></script>
 	<script defer src="practice-settings.js?v=43a1be04"></script>
 	<script defer src="replay-engine.js?v=db2dd99e"></script>
-	<script defer src="replay-common.js?v=cc7cd7cc"></script>
+	<script defer src="replay-common.js?v=25242f8b"></script>
 	<script defer src="sound-pack.js?v=2d5fce9a"></script>
-	<script defer src="base.js?v=65b0024e"></script>
+	<script defer src="base.js?v=87904ae2"></script>
 	<script defer src="tetrio.js"></script>
-	<script defer src="zztetris.js?v=c0ea6561"></script>
-	<script defer src="stats.js?v=5c0de463"></script>
-	<script defer src="attack-sim.js?v=82a4a2eb"></script>
+	<script defer src="zztetris.js?v=6663f0cd"></script>
+	<script defer src="stats.js?v=e29c2d2f"></script>
+	<script defer src="attack-sim.js?v=947f9f63"></script>
 	<script defer src="auto-lock.js?v=355903c7"></script>
 	<script defer src="replay-practice.js?v=ff40dac7"></script>
-	<script defer src="mobile.js?v=4058cf2b"></script>
+	<script defer src="mobile.js?v=36220fc6"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=f428c787" />
-	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=5b179213" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=3329382f" />
+	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=14074b50" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
 	<link rel="stylesheet" type="text/css" href="styles/board_settings.css" />
@@ -113,19 +113,23 @@
 						<input type="number" id="simulateAttackApm" min="0" max="300" step="1" value="30" />
 					</div>
 					<div class="practice-row">
-						<label for="simulateAttackMessiness">Messiness (attack size)</label>
-						<input type="range" id="simulateAttackMessiness" min="0" max="100" value="0" />
-						<span class="practice-value" id="simulateAttackMessinessVal">0%</span>
+						<label for="simulateAttackSizeWeights">Attack size weights</label>
+						<input
+							type="text"
+							id="simulateAttackSizeWeights"
+							value="1"
+							autocomplete="off"
+							spellcheck="false"
+							title="Weights for attack sizes 1,2,3,... (e.g. 4,3,2,1)"
+						/>
+					</div>
+					<div class="practice-row">
+						<span class="practice-value practice-value--block" id="simulateAttackSizeWeightsVal">1:100.0% · avg 1.00</span>
 					</div>
 					<div class="practice-row">
 						<label for="simulateAttackTimeRandom">Time randomness</label>
 						<input type="range" id="simulateAttackTimeRandom" min="0" max="100" value="0" />
 						<span class="practice-value" id="simulateAttackTimeRandomVal">0%</span>
-					</div>
-					<div class="practice-row">
-						<label for="simulateAttackSizeRandom">Size randomness</label>
-						<input type="range" id="simulateAttackSizeRandom" min="0" max="100" value="0" />
-						<span class="practice-value" id="simulateAttackSizeRandomVal">0%</span>
 					</div>
 					<div class="practice-row">
 						<label for="simulateAttackHoleMessiness">Hole messiness</label>

@@ -60,9 +60,8 @@
 	const DEFAULT_ATTACK_SIM = {
 		enabled: false,
 		apm: 30,
-		messiness: 0,
+		sizeWeights: '1',
 		timeRandom: 0,
-		sizeRandom: 0,
 		holeMessiness: 0,
 	};
 
@@ -198,9 +197,7 @@
 		const booleanFields = ['enabled'];
 		const numberFields = [
 			['apm', 0, 300],
-			['messiness', 0, 100],
 			['timeRandom', 0, 100],
-			['sizeRandom', 0, 100],
 			['holeMessiness', 0, 100],
 		];
 
@@ -213,6 +210,23 @@
 			const parsed = validNumber(saved[field], min, max);
 			if (parsed !== undefined) result[field] = parsed;
 			else if (complete) result[field] = DEFAULT_ATTACK_SIM[field];
+		}
+		if (typeof saved.sizeWeights === 'string') {
+			result.sizeWeights = saved.sizeWeights.slice(0, 200);
+		} else if (complete) {
+			// Migrate the old attack-size slider to a single-size weight.
+			const messiness = validNumber(saved.messiness, 0, 100);
+			if (messiness !== undefined && messiness > 0) {
+				const baseSize = Math.max(
+					1,
+					Math.min(20, Math.round(1 + (messiness / 100) * 9))
+				);
+				const weights = new Array(baseSize).fill(0);
+				weights[baseSize - 1] = 1;
+				result.sizeWeights = weights.join(',');
+			} else {
+				result.sizeWeights = DEFAULT_ATTACK_SIM.sizeWeights;
+			}
 		}
 		if (!complete) return Object.keys(result).length ? result : undefined;
 		return Object.assign({}, DEFAULT_ATTACK_SIM, result);

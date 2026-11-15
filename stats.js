@@ -197,6 +197,9 @@
 				skipFinesse,
 				isSpin,
 				exemptSpins: config.exemptSpins,
+				// The main game only inserts 1-wide garbage holes, so any
+				// garbage cleared here is cheese.
+				cheeseOnBoard: (Number(info.garbageCleared) || 0) > 0,
 			}),
 			finesseTable
 		);
@@ -220,7 +223,7 @@
 		const copy = {};
 		for (const key of Object.keys(state)) {
 			if (TRANSIENT_STATE_KEYS.has(key)) continue;
-			copy[key] = state[key];
+			copy[key] = Array.isArray(state[key]) ? state[key].slice() : state[key];
 		}
 		return copy;
 	}
@@ -228,7 +231,7 @@
 	function restore(saved) {
 		if (!saved) return;
 		for (const key of Object.keys(saved)) {
-			state[key] = saved[key];
+			state[key] = Array.isArray(saved[key]) ? saved[key].slice() : saved[key];
 		}
 		state.currentInputs = 0;
 		state.softDropExempt = false;

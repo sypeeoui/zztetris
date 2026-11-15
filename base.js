@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=ff5aa528', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=d36d7a60', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -922,6 +922,11 @@ function updateHistory() {
 		hold: holdP,
 		piece: piece,
 		stats: window.ZZStats?.snapshot(),
+		combo: combo,
+		b2b: b2b,
+		oldcombo: oldcombo,
+		oldb2b: oldb2b,
+		attackDisplay: window.ZZStats?.getAttackDisplay?.(),
 	};
 	if (histPos > 500) {
 		// just in case hist is taking up too much memory
@@ -1095,22 +1100,10 @@ function undo() {
 		queue = JSON.parse(hist[histPos]['queue']);
 		holdP = hist[histPos]['hold'];
 		piece = hist[histPos]['piece'];
-        if (combo >= 1)
-        {
-            combo-=1;
-        }
-        else
-        {
-            combo=oldcombo;
-        }
-		if(b2b >= 1 && (tspin || mini || cleared == 4))
-        {   
-            b2b-=1;
-        }
-        else
-        {
-            b2b = oldb2b;        
-        }
+		combo = hist[histPos].combo ?? combo;
+		b2b = hist[histPos].b2b ?? b2b;
+		oldcombo = hist[histPos].oldcombo ?? oldcombo;
+		oldb2b = hist[histPos].oldb2b ?? oldb2b;
 		xPOS = spawn[0];
 		yPOS = spawn[1];
 		rot = 0;
@@ -1122,6 +1115,13 @@ function undo() {
 		window.ZZStats?.onNewPiece(piece);
 		window.ZZAutoLock?.onNewPiece();
 		window.ZZStats?.restore(hist[histPos]['stats']);
+		const attackDisplay = hist[histPos].attackDisplay;
+		if (attackDisplay) {
+			window.ZZStats?.restoreAttackDisplay?.(
+				attackDisplay.damage,
+				attackDisplay.spike
+			);
+		}
 	}
 }
 
@@ -1133,6 +1133,10 @@ function redo() {
 		holdP = hist[histPos + 1]['hold'];
 		piece = hist[histPos + 1]['piece'];
 		histPos++;
+		combo = hist[histPos].combo ?? combo;
+		b2b = hist[histPos].b2b ?? b2b;
+		oldcombo = hist[histPos].oldcombo ?? oldcombo;
+		oldb2b = hist[histPos].oldb2b ?? oldb2b;
 
 		xPOS = spawn[0];
 		yPOS = spawn[1];
@@ -1145,6 +1149,13 @@ function redo() {
 		window.ZZStats?.onNewPiece(piece);
 		window.ZZAutoLock?.onNewPiece();
 		window.ZZStats?.restore(hist[histPos]['stats']);
+		const attackDisplay = hist[histPos].attackDisplay;
+		if (attackDisplay) {
+			window.ZZStats?.restoreAttackDisplay?.(
+				attackDisplay.damage,
+				attackDisplay.spike
+			);
+		}
 	}
 }
 
@@ -4186,6 +4197,11 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 				hold: holdP,
 				piece: piece,
 				stats: window.ZZStats?.snapshot(),
+				combo: -1,
+				b2b: 0,
+				oldcombo: -1,
+				oldb2b: 0,
+				attackDisplay: { damage: 0, spike: 0 },
 			},
 		];
 		histPos = 0;
@@ -4738,8 +4754,12 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			addPracticeGarbage(permanentLinesCleared, messiness, true);
 		}
 
-		// 4W/3W practice modes have an endless garbage supply.
-		if (typeof addInfiniteGarbage === 'function') {
+		// 4W/3W only keep an endless garbage supply when the user asked for
+		// it: Permanent practice garbage or the attack simulator.
+		const endlessGarbage =
+			window.ZZAttackSim?.isActive?.() ||
+			!!document.getElementById('practicePermanent')?.checked;
+		if (endlessGarbage && typeof addInfiniteGarbage === 'function') {
 			addInfiniteGarbage(garbageLinesCleared);
 		}
 		var cleared = clearedIndexes.length;

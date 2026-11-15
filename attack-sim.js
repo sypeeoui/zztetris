@@ -8,7 +8,8 @@
 	'use strict';
 
 	const STORAGE_KEY = 'zztetris_attack_sim_v1';
-	const MAX_BLOCK = 10;
+	const MAX_SIZE = 20;
+	const DEFAULT_SIZE_WEIGHTS = '1';
 	const MAX_APM = 300;
 	const MAX_PENDING = 100;
 	// TETR.IO's standard garbage cap is 8 lines tanked per lock.
@@ -19,9 +20,8 @@
 	const DEFAULT_SETTINGS = {
 		enabled: false,
 		apm: 30,
-		messiness: 0,
+		sizeWeights: DEFAULT_SIZE_WEIGHTS,
 		timeRandom: 0,
-		sizeRandom: 0,
 		holeMessiness: 0,
 	};
 
@@ -38,22 +38,87 @@
 		return Math.max(min, Math.min(max, value));
 	}
 
+	// The input is a comma/space separated list of weights for attack sizes
+	// 1, 2, 3, ...; e.g. "4,3,2,1" means 40% / 30% / 20% / 10%.
+	function parseSizeWeights(text) {
+		const raw = String(text ?? '').trim();
+		if (!raw) return [1];
+		const weights = [];
+		for (const part of raw.split(/[\s,;]+/)) {
+			if (!part) continue;
+			const value = Number(part);
+			if (!Number.isFinite(value) || value < 0) continue;
+			weights.push(value);
+			if (weights.length >= MAX_SIZE) break;
+		}
+		if (!weights.length) return [1];
+		const total = weights.reduce((sum, value) => sum + value, 0);
+		return total > 0 ? weights : [1];
+	}
+
+	function normalizeSizeWeights(weights) {
+		const total = weights.reduce((sum, value) => sum + value, 0);
+		return total > 0 ? weights.map((value) => value / total) : [1];
+	}
+
+	function expectedSize(weights) {
+		return normalizeSizeWeights(weights).reduce(
+			(sum, probability, index) => sum + (index + 1) * probability,
+			0
+		);
+	}
+
+	function pickSize(weights) {
+		const total = weights.reduce((sum, value) => sum + value, 0);
+		if (!(total > 0)) return 1;
+		let roll = Math.random() * total;
+		for (let index = 0; index < weights.length; index++) {
+			roll -= weights[index];
+			if (roll < 0) return index + 1;
+		}
+		return weights.length;
+	}
+
+	function formatSizeWeights(weights) {
+		const probabilities = normalizeSizeWeights(weights);
+		const parts = [];
+		for (let index = 0; index < probabilities.length; index++) {
+			if (probabilities[index] <= 0) continue;
+			parts.push(`${index + 1}:${(probabilities[index] * 100).toFixed(1)}%`);
+		}
+		return `${parts.join(' ')} · avg ${expectedSize(weights).toFixed(2)}`;
+	}
+
+	function singleSizeWeights(size) {
+		const count = Math.max(1, Math.min(MAX_SIZE, Math.floor(size) || 1));
+		const weights = new Array(count).fill(0);
+		weights[count - 1] = 1;
+		return weights.join(',');
+	}
+
+	function migrateSizeWeights(saved) {
+		if (typeof saved.sizeWeights === 'string') return saved.sizeWeights;
+		const messiness = clamp(Number(saved.messiness) || 0, 0, 100);
+		if (messiness > 0) {
+			const baseSize = Math.max(
+				1,
+				Math.min(MAX_SIZE, Math.round(1 + (messiness / 100) * 9))
+			);
+			return singleSizeWeights(baseSize);
+		}
+		return DEFAULT_SIZE_WEIGHTS;
+	}
+
 	function readSettings() {
+		const sizeWeightsText =
+			$('simulateAttackSizeWeights')?.value ?? DEFAULT_SIZE_WEIGHTS;
 		return {
 			enabled: !!$('simulateAttackEnabled')?.checked,
 			apm: clamp(Number($('simulateAttackApm')?.value) || 0, 0, MAX_APM),
-			messiness: clamp(
-				Number($('simulateAttackMessiness')?.value) || 0,
-				0,
-				100
-			),
+			sizeWeightsText,
+			sizeWeights: parseSizeWeights(sizeWeightsText),
 			timeRandom: clamp(
 				Number($('simulateAttackTimeRandom')?.value) || 0,
-				0,
-				100
-			),
-			sizeRandom: clamp(
-				Number($('simulateAttackSizeRandom')?.value) || 0,
 				0,
 				100
 			),
@@ -73,9 +138,8 @@
 			return {
 				enabled: !!saved.enabled,
 				apm: clamp(Number(saved.apm) || 0, 0, MAX_APM),
-				messiness: clamp(Number(saved.messiness) || 0, 0, 100),
+				sizeWeights: migrateSizeWeights(saved),
 				timeRandom: clamp(Number(saved.timeRandom) || 0, 0, 100),
-				sizeRandom: clamp(Number(saved.sizeRandom) || 0, 0, 100),
 				holeMessiness: clamp(Number(saved.holeMessiness) || 0, 0, 100),
 			};
 		} catch (error) {
@@ -85,7 +149,17 @@
 
 	function saveSettings() {
 		try {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(readSettings()));
+			const settings = readSettings();
+			localStorage.setItem(
+				STORAGE_KEY,
+				JSON.stringify({
+					enabled: settings.enabled,
+					apm: settings.apm,
+					sizeWeights: settings.sizeWeightsText,
+					timeRandom: settings.timeRandom,
+					holeMessiness: settings.holeMessiness,
+				})
+			);
 		} catch (error) {
 			// Storage can be unavailable in private mode; the simulator still
 			// works for the current session.
@@ -104,9 +178,8 @@
 		};
 		setChecked('simulateAttackEnabled', settings.enabled);
 		setValue('simulateAttackApm', settings.apm);
-		setValue('simulateAttackMessiness', settings.messiness);
+		setValue('simulateAttackSizeWeights', settings.sizeWeights);
 		setValue('simulateAttackTimeRandom', settings.timeRandom);
-		setValue('simulateAttackSizeRandom', settings.sizeRandom);
 		setValue('simulateAttackHoleMessiness', settings.holeMessiness);
 		updateValueDisplays();
 	}
@@ -137,9 +210,7 @@
 
 	function updateValueDisplays() {
 		const pairs = [
-			['simulateAttackMessiness', 'simulateAttackMessinessVal'],
 			['simulateAttackTimeRandom', 'simulateAttackTimeRandomVal'],
-			['simulateAttackSizeRandom', 'simulateAttackSizeRandomVal'],
 			['simulateAttackHoleMessiness', 'simulateAttackHoleMessinessVal'],
 		];
 		for (const [inputId, labelId] of pairs) {
@@ -147,10 +218,13 @@
 			const label = $(labelId);
 			if (input && label) label.textContent = `${input.value}%`;
 		}
-	}
-
-	function baseSizeFor(messiness) {
-		return 1 + (messiness / 100) * (MAX_BLOCK - 1);
+		const weightsInput = $('simulateAttackSizeWeights');
+		const weightsLabel = $('simulateAttackSizeWeightsVal');
+		if (weightsInput && weightsLabel) {
+			weightsLabel.textContent = formatSizeWeights(
+				parseSizeWeights(weightsInput.value)
+			);
+		}
 	}
 
 	function createQueue() {
@@ -198,8 +272,8 @@
 		if (!enabled) return;
 		const settings = readSettings();
 		if (settings.apm <= 0) return;
-		const baseSize = baseSizeFor(settings.messiness);
-		const baseInterval = (60000 * baseSize) / settings.apm;
+		const averageSize = Math.max(1, expectedSize(settings.sizeWeights));
+		const baseInterval = (60000 * averageSize) / settings.apm;
 		const jitter = settings.timeRandom / 100;
 		const delay = Math.max(
 			MIN_INTERVAL,
@@ -223,15 +297,7 @@
 	function spawnAttack() {
 		if (!queue) return;
 		const settings = readSettings();
-		const baseSize = baseSizeFor(settings.messiness);
-		const sizeJitter = settings.sizeRandom / 100;
-		const size = Math.max(
-			1,
-			Math.round(
-				baseSize +
-					sizeJitter * (Math.random() * 2 - 1) * (baseSize - 1)
-			)
-		);
+		const size = Math.max(1, pickSize(settings.sizeWeights));
 		queue.receive({
 			frame: Date.now(),
 			amount: size,
@@ -343,10 +409,10 @@
 			});
 		}
 
-		const messiness = $('simulateAttackMessiness');
-		if (messiness) {
-			messiness.addEventListener('input', updateValueDisplays);
-			messiness.addEventListener('change', () => {
+		const sizeWeights = $('simulateAttackSizeWeights');
+		if (sizeWeights) {
+			sizeWeights.addEventListener('input', updateValueDisplays);
+			sizeWeights.addEventListener('change', () => {
 				saveSettings();
 				if (enabled) scheduleNext();
 			});
@@ -359,12 +425,6 @@
 				saveSettings();
 				if (enabled) scheduleNext();
 			});
-		}
-
-		const sizeRandom = $('simulateAttackSizeRandom');
-		if (sizeRandom) {
-			sizeRandom.addEventListener('input', updateValueDisplays);
-			sizeRandom.addEventListener('change', saveSettings);
 		}
 
 		const holeMessiness = $('simulateAttackHoleMessiness');
@@ -407,6 +467,10 @@
 		onRestart,
 		isActive: () => enabled,
 		resetQueue,
+		parseSizeWeights,
+		expectedSize,
+		pickSize,
+		formatSizeWeights,
 		getPendingEntries: () =>
 			queue
 				? queue.queue.map((entry) => ({

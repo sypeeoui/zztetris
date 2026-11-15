@@ -29,6 +29,33 @@
 	const COMBO_BONUS = 0.25;
 	const COMBO_FLOOR_SCALE = 1.25;
 
+	// Minomuncher's attack-cheesiness scorer. The weights are Blockfish's
+	// line-clear weights; the history is the last three attack sizes sent.
+	const CHEESE_WEIGHTS = [1.87177053, 1.44428749, 1.31233034, 1.16560664];
+	const CHEESE_WEIGHT_MIN = Math.min(...CHEESE_WEIGHTS);
+	const CHEESE_WEIGHT_MAX = Math.max(...CHEESE_WEIGHTS);
+
+	function cheeseScoreFor(lineCount, history) {
+		const count = Math.max(1, Math.min(CHEESE_WEIGHTS.length, Math.floor(Number(lineCount) || 1)));
+		let result;
+		if (!history.length) {
+			result = CHEESE_WEIGHTS[count - 1] * count;
+		} else {
+			result = CHEESE_WEIGHTS[Math.max(...history) - 1] * count;
+		}
+		if (count === 4) history.length = 0;
+		history.push(count);
+		if (history.length > 3) history.shift();
+		return ((result - CHEESE_WEIGHT_MIN * count) * count) / (CHEESE_WEIGHT_MAX - CHEESE_WEIGHT_MIN);
+	}
+
+	// Minomuncher's sigmoid maps cheeseScore / linesSent to roughly 0..1.
+	function sigmoid(value) {
+		const top = 1 / (1 + Math.exp(-10 * (value - 0.3))) - 1 / (1 + Math.exp(3));
+		const bottom = 1 / (1 + Math.exp(-7)) - 1 / (1 + Math.exp(3));
+		return top / bottom;
+	}
+
 	function isValidX(pieces, piece, rot, x) {
 		const matrix = pieces[piece] && pieces[piece][rot];
 		if (!matrix) return false;
@@ -291,6 +318,19 @@
 			garbageReceived: 0,
 			garbageCleared: 0,
 			garbageCanceled: 0,
+			// Tetra Stats / Minomuncher placement metrics.
+			attackWithDownstack: 0,
+			attackWithCheese: 0,
+			cheeseCleared: 0,
+			cheeseScore: 0,
+			cheeseHistory: [],
+			linesSent: 0,
+			downstackPieces: 0,
+			surgeLines: 0,
+			// Replay-only board tracking for cheese APL.
+			garbageLinesOnBoard: 0,
+			cheeseLinesOnBoard: 0,
+			pendingTank: [],
 			currentInputs: 0,
 			currentPiece: '',
 			softDropExempt: false,
@@ -308,8 +348,9 @@
 		state.pieces += 1;
 
 		const cleared = Math.max(0, Math.min(4, Math.floor(info.cleared || 0)));
+		const garbageCleared = Math.max(0, Math.floor(Number(info.garbageCleared) || 0));
 		state.lines += cleared;
-		state.garbageCleared += Math.max(0, Math.floor(Number(info.garbageCleared) || 0));
+		state.garbageCleared += garbageCleared;
 		if (cleared === 1) state.singles += 1;
 		else if (cleared === 2) state.doubles += 1;
 		else if (cleared === 3) state.triples += 1;
@@ -365,6 +406,32 @@
 		state.attackPC += attack.pc;
 		state.attackSurge += attack.surge;
 
+		// Tetra Stats / Minomuncher APL and attack-cheesiness inputs. The
+		// replay tracker passes the engine's per-target attack array; the game
+		// sends one attack per clear, so fall back to the computed total.
+		const attackSent =
+			Array.isArray(info.attackSent) && info.attackSent.length
+				? info.attackSent
+						.map((value) => Math.max(0, Math.floor(Number(value) || 0)))
+						.filter((value) => value > 0)
+				: attack.total > 0
+					? [attack.total]
+					: [];
+		const sentLines = attackSent.reduce((sum, value) => sum + value, 0);
+		state.linesSent += sentLines;
+		for (const lineCount of attackSent) {
+			state.cheeseScore += cheeseScoreFor(lineCount, state.cheeseHistory);
+		}
+		if (garbageCleared > 0) {
+			state.attackWithDownstack += attack.total;
+			state.downstackPieces += 1;
+			if (info.cheeseOnBoard) {
+				state.attackWithCheese += attack.total;
+				state.cheeseCleared += garbageCleared;
+			}
+		}
+		if (attack.surge > 0) state.surgeLines += cleared;
+
 		state.maxCombo = Math.max(state.maxCombo, Number(info.combo) || 0);
 		state.maxB2B = Math.max(state.maxB2B, Number(info.b2b) || 0);
 
@@ -393,6 +460,149 @@
 		state.currentInputs = 0;
 
 		return { attack, fault: scored && excess > 0, excess, scored };
+	}
+
+	function statSeconds(state, now) {
+		return Math.max(0, (now - state.startTime) / 1000);
+	}
+
+	function statApm(state, now) {
+		const minutes = statSeconds(state, now) / 60;
+		return minutes > 0 ? state.attack / minutes : 0;
+	}
+
+	function statPps(state, now) {
+		const seconds = statSeconds(state, now);
+		return seconds > 0 ? state.pieces / seconds : 0;
+	}
+
+	function statVs(state, now) {
+		const seconds = statSeconds(state, now);
+		return seconds > 0
+			? ((state.attack + state.garbageCleared) * 100) / seconds
+			: 0;
+	}
+
+	function statApp(state) {
+		return state.pieces > 0 ? state.attack / state.pieces : 0;
+	}
+
+	function statDss(state, now) {
+		const seconds = statSeconds(state, now);
+		return seconds > 0 ? state.garbageCleared / seconds : 0;
+	}
+
+	function statDsp(state) {
+		return state.pieces > 0 ? state.garbageCleared / state.pieces : 0;
+	}
+
+	function statGbe(state, now) {
+		const pps = statPps(state, now);
+		const app = statApp(state);
+		const dss = statDss(state, now);
+		return pps > 0 ? ((app * dss) / pps) * 2 : 0;
+	}
+
+	// The rating/playstyle formulas are noisy on tiny samples, so hide them
+	// until the session has enough data to be meaningful.
+	function hasRatingSample(state, now) {
+		return state.pieces >= 50 && statSeconds(state, now) >= 20;
+	}
+
+	// Tetra Stats' outdated Season 1 estimated TR formula.
+	function estimateTr(state, now) {
+		if (!hasRatingSample(state, now)) return null;
+		const apm = statApm(state, now);
+		const pps = statPps(state, now);
+		const vs = statVs(state, now);
+		const app = statApp(state);
+		const dsp = statDsp(state);
+		const vsapm = apm > 0 ? vs / apm : 0;
+		const ntemp = pps * (150 + (vsapm - 1.66) * 35) + app * 290 + dsp * 700;
+		const estglicko =
+			0.000013 * Math.pow(ntemp, 3) -
+			0.0196 * Math.pow(ntemp, 2) +
+			12.645 * ntemp -
+			1005.4;
+		const esttr =
+			25000 /
+			(1 +
+				Math.pow(
+					10,
+					((1500 - estglicko) * Math.PI) /
+						Math.sqrt(
+							3 * Math.pow(Math.log(10), 2) * Math.pow(60, 2) +
+								2500 *
+									(64 * Math.pow(Math.PI, 2) +
+										147 * Math.pow(Math.log(10), 2))
+						)
+				));
+		return Number.isFinite(esttr) ? esttr : null;
+	}
+
+	// Tetra Stats' playstyle radar formulas. Values are fractions; the UI
+	// formats them as percentages.
+	function playstyleValues(state, now) {
+		if (!hasRatingSample(state, now)) return null;
+		const apm = statApm(state, now);
+		const pps = statPps(state, now);
+		const vs = statVs(state, now);
+		const app = statApp(state);
+		const dsp = statDsp(state);
+		const gbe = statGbe(state, now);
+		const vsapm = apm > 0 ? vs / apm : 0;
+		const srarea = pps * 135 + app * 290 + dsp * 700;
+		if (!(srarea > 0)) return null;
+		let statrank = 11.2 * Math.atan((srarea - 93) / 130) + 1;
+		if (statrank <= 0) statrank = 0.001;
+		const nmapm =
+			apm /
+				srarea /
+				(0.069 * Math.pow(1.0017, Math.pow(statrank, 5) / 4700) +
+					statrank / 360) -
+			1;
+		const nmpps =
+			pps /
+				srarea /
+				(0.0084264 * Math.pow(2.14, -2 * (statrank / 2.7 + 1.03)) -
+					statrank / 5750 +
+					0.0067) -
+			1;
+		const nmapp =
+			app /
+				(0.1368803292 * Math.pow(1.0024, Math.pow(statrank, 5) / 2800) +
+					statrank / 54) -
+			1;
+		const nmdsp =
+			dsp /
+				(0.02136327583 * Math.pow(14, (statrank - 14.75) / 3.9) +
+					statrank / 152 +
+					0.022) -
+			1;
+		const nmgbe =
+			gbe /
+				(statrank / 350 +
+					0.005948424455 * Math.pow(3.8, (statrank - 6.1) / 4) +
+					0.006) -
+			1;
+		const nmvsapm =
+			vsapm / (-Math.pow((statrank - 16) / 36, 2) + 2.133) - 1;
+		const values = {
+			opener:
+				(nmapm + nmpps * 0.75 + nmvsapm * -10 + nmapp * 0.75 + nmdsp * -0.25) /
+					3.5 +
+				0.5,
+			plonk: (nmgbe + nmapp + nmdsp * 0.75 + nmpps * -1) / 2.73 + 0.5,
+			stride: (nmapm * -0.25 + nmpps + nmapp * -2 + nmdsp * -0.5) * 0.79 + 0.5,
+			infds:
+				(nmdsp + nmapp * -0.75 + nmapm * 0.5 + nmvsapm * 1.5 + nmpps * 0.5) *
+					0.9 +
+				0.5,
+		};
+		for (const key of Object.keys(values)) {
+			if (!Number.isFinite(values[key])) return null;
+		}
+		return values;
 	}
 
 	function getStatValue(state, id, now = Date.now(), extra = {}) {
@@ -429,6 +639,42 @@
 				return seconds > 0 ? ((attack + state.garbageCleared) * 100) / seconds : 0;
 			case 'app':
 				return pieces > 0 ? attack / pieces : 0;
+			case 'apl':
+				return lines > 0 ? attack / lines : null;
+			case 'upstackApl': {
+				const stackLines = lines - state.garbageCleared;
+				const stackAttack = attack - state.attackWithDownstack;
+				return stackLines > 0 ? stackAttack / stackLines : null;
+			}
+			case 'downstackApl':
+				return state.garbageCleared > 0
+					? state.attackWithDownstack / state.garbageCleared
+					: null;
+			case 'cheeseApl':
+				return state.cheeseCleared > 0
+					? state.attackWithCheese / state.cheeseCleared
+					: null;
+			case 'attackCheesiness':
+				return state.linesSent > 0
+					? sigmoid(state.cheeseScore / state.linesSent)
+					: null;
+			case 'kps':
+				return seconds > 0 ? state.keys / seconds : 0;
+			case 'downstackRatio':
+				return pieces > 0 ? state.downstackPieces / pieces : null;
+			case 'surgeApl':
+				return state.surgeLines > 0
+					? state.attackSurge / state.surgeLines
+					: null;
+			case 'estTr':
+				return estimateTr(state, now);
+			case 'opener':
+			case 'plonk':
+			case 'stride':
+			case 'infds': {
+				const playstyles = playstyleValues(state, now);
+				return playstyles ? playstyles[id] : null;
+			}
 			case 'garbageSent':
 				return state.garbageSent ?? attack;
 			case 'garbageReceived':
@@ -576,6 +822,11 @@
 		B2B_BONUS,
 		COMBO_BONUS,
 		COMBO_FLOOR_SCALE,
+		CHEESE_WEIGHTS,
+		cheeseScoreFor,
+		sigmoid,
+		estimateTr,
+		playstyleValues,
 		baseAttack,
 		applyCombo,
 		isValidX,

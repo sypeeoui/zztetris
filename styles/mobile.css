@@ -924,7 +924,8 @@ html.mobile #zzBoardBody .practice-row label {
 }
 
 html.mobile #zzBoardBody .practice-row input[type='number'],
-html.mobile #zzBoardBody .practice-row input[type='range'] {
+html.mobile #zzBoardBody .practice-row input[type='range'],
+html.mobile #zzBoardBody .practice-row input[type='text'] {
 	flex: 1;
 }
 

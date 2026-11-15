@@ -85,7 +85,8 @@ body {
 }
 
 .practice-row input[type="number"],
-.practice-row input[type="range"] {
+.practice-row input[type="range"],
+.practice-row input[type="text"] {
 	width: 100%;
 	background: #2a2a2a;
 	border: 1px solid #444;
@@ -117,6 +118,14 @@ body {
 	margin-left: 6px;
 	color: #4caf50;
 	font-family: monospace;
+}
+
+.practice-value--block {
+	display: block;
+	margin-left: 0;
+	margin-top: 4px;
+	line-height: 1.4;
+	word-break: break-word;
 }
 
 /* The attack simulator has its own queue; replay practice uses the replay's

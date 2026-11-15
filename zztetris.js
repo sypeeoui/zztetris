@@ -115,7 +115,14 @@ function restart() {
 	newPiece();
 	window.ZZStats?.onRestart();
 	window.ZZAttackSim?.onRestart();
-	if (hist[histPos]) hist[histPos].stats = window.ZZStats?.snapshot();
+	if (hist[histPos]) {
+		hist[histPos].stats = window.ZZStats?.snapshot();
+		hist[histPos].combo = combo;
+		hist[histPos].b2b = b2b;
+		hist[histPos].oldcombo = oldcombo;
+		hist[histPos].oldb2b = oldb2b;
+		hist[histPos].attackDisplay = window.ZZStats?.getAttackDisplay?.();
+	}
 }
 
 function garbageHeight() {

@@ -10,7 +10,7 @@
 
 	const STORAGE_KEY = 'zztetris_stats_config';
 	// Bump when a new default stat should be added to older saved configs.
-	const STATS_CONFIG_VERSION = 2;
+	const STATS_CONFIG_VERSION = 3;
 
 	// `format` is interpreted by stats-core.js:
 	//   time     -> m:ss / h:mm:ss
@@ -29,11 +29,23 @@
 		{ id: 'pps', label: 'PPS', group: 'Speed', format: 'float2' },
 		{ id: 'lpm', label: 'LPM', group: 'Speed', format: 'float2' },
 		{ id: 'kpp', label: 'KPP', group: 'Speed', format: 'float2' },
+		{ id: 'kps', label: 'KPS (Keys/sec)', group: 'Speed', format: 'float2' },
 
 		{ id: 'apm', label: 'APM', group: 'Attack', format: 'float2' },
 		{ id: 'vs', label: 'VS', group: 'Attack', format: 'float2' },
 		{ id: 'app', label: 'APP', group: 'Attack', format: 'float2' },
+		{ id: 'apl', label: 'APL (Attack/Line)', group: 'Attack', format: 'float3' },
+		{ id: 'upstackApl', label: 'Upstack APL', group: 'Attack', format: 'float3' },
+		{ id: 'downstackApl', label: 'Downstack APL', group: 'Attack', format: 'float3' },
+		{ id: 'cheeseApl', label: 'Cheese APL', group: 'Attack', format: 'float3' },
+		{
+			id: 'attackCheesiness',
+			label: 'Attack Cheesiness',
+			group: 'Attack',
+			format: 'float3',
+		},
 		{ id: 'surge', label: 'Surge', group: 'Attack', format: 'int' },
+		{ id: 'surgeApl', label: 'Surge APL', group: 'Attack', format: 'float3' },
 
 		// TETR.IO / Tetra Stats garbage and downstack metrics.
 		{ id: 'garbageSent', label: 'Garbage Sent', group: 'Garbage', format: 'int' },
@@ -48,6 +60,12 @@
 		{ id: 'vsApm', label: 'VS/APM', group: 'Garbage', format: 'float2' },
 		{ id: 'appDsP', label: 'APP + DS/P', group: 'Garbage', format: 'float2' },
 		{ id: 'wapp', label: 'wAPP', group: 'Garbage', format: 'float2' },
+		{
+			id: 'downstackRatio',
+			label: 'DS Ratio (pieces)',
+			group: 'Garbage',
+			format: 'percent2',
+		},
 
 		{ id: 'finesse', label: 'Finesse', group: 'Finesse', format: 'percent2' },
 		{ id: 'finesseFaults', label: 'Faults', group: 'Finesse', format: 'int' },
@@ -80,6 +98,13 @@
 		{ id: 'piecesPerLine', label: 'Pieces/Line', group: 'Efficiency', format: 'float2' },
 		{ id: 'holdsPerPiece', label: 'Holds/Piece', group: 'Efficiency', format: 'float2' },
 		{ id: 'area', label: 'Area (Tetra Stats)', group: 'Efficiency', format: 'float2' },
+
+		{ id: 'estTr', label: 'Est. TR (S1)', group: 'Rating', format: 'int' },
+
+		{ id: 'opener', label: 'Opener', group: 'Playstyle', format: 'percent2' },
+		{ id: 'plonk', label: 'Plonk', group: 'Playstyle', format: 'percent2' },
+		{ id: 'stride', label: 'Stride', group: 'Playstyle', format: 'percent2' },
+		{ id: 'infds', label: 'Inf. DS', group: 'Playstyle', format: 'percent2' },
 	];
 
 	const DEFAULT_VISIBLE = [
@@ -90,6 +115,8 @@
 		'apm',
 		'vs',
 		'app',
+		'apl',
+		'attackCheesiness',
 		'finesse',
 		'finesseFaults',
 		'maxCombo',
@@ -148,8 +175,15 @@
 		// is respected.
 		const storedVersion = Number(stored.version) || 1;
 		if (storedVersion < STATS_CONFIG_VERSION) {
-			if (!config.visibleStats.includes('garbageCanceled')) {
+			if (storedVersion < 2 && !config.visibleStats.includes('garbageCanceled')) {
 				config.visibleStats.push('garbageCanceled');
+			}
+			if (storedVersion < 3) {
+				for (const id of ['apl', 'attackCheesiness']) {
+					if (!config.visibleStats.includes(id)) {
+						config.visibleStats.push(id);
+					}
+				}
 			}
 			config.version = STATS_CONFIG_VERSION;
 			try {

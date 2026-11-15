@@ -801,6 +801,13 @@
 				lock: (res) => this.onLock(res),
 				garbageReceive: (event) => this.onGarbageEvent('receive', event),
 				garbageTank: (event) => {
+					// The engine emits garbage.tank before falling.lock. Defer
+					// the board-count update until onLock so the clear is
+					// subtracted from the pre-tank board first.
+					this.state.pendingTank.push({
+						amount: Math.max(0, Math.floor(Number(event?.amount) || 0)),
+						size: Math.max(1, Math.floor(Number(event?.size) || 1)),
+					});
 					this.onGarbageChange();
 					this.onGarbageEvent('tank', event);
 				},
@@ -896,6 +903,15 @@
 					}
 				}
 			}
+			const garbageCleared = Math.max(
+				0,
+				Math.floor(Number(res.garbageCleared) || 0)
+			);
+			const attackSent = Array.isArray(res.garbage)
+				? res.garbage
+						.map((value) => Math.max(0, Math.floor(Number(value) || 0)))
+						.filter((value) => value > 0)
+				: [];
 			const info = {
 				piece,
 				rot,
@@ -910,11 +926,10 @@
 				combo,
 				b2bBefore,
 				comboBefore,
-				garbageCleared: Number(res.garbageCleared) || 0,
-				sent: (res.garbage || []).reduce(
-					(sum, value) => sum + (Number(value) || 0),
-					0
-				),
+				garbageCleared,
+				cheeseOnBoard: this.state.cheeseLinesOnBoard > 0,
+				attackSent,
+				sent: attackSent.reduce((sum, value) => sum + value, 0),
 				surge: Number(res.surge) || 0,
 				shapeKey,
 				skipFinesse: !shapeKey,
@@ -925,6 +940,25 @@
 			this.state.softDropExempt = this.lockSoftDropExempt;
 			root.ZZStatsCore.applyPlacement(this.state, info, this.finesseTable);
 			this.state.softDropExempt = false;
+			// Subtract the cleared garbage from the pre-tank board, then add
+			// the garbage the engine tanked after the clear.
+			if (garbageCleared > 0) {
+				this.state.garbageLinesOnBoard = Math.max(
+					0,
+					this.state.garbageLinesOnBoard - garbageCleared
+				);
+				this.state.cheeseLinesOnBoard = Math.max(
+					0,
+					this.state.cheeseLinesOnBoard - garbageCleared
+				);
+			}
+			for (const entry of this.state.pendingTank) {
+				this.state.garbageLinesOnBoard += entry.amount;
+				if (entry.size === 1) {
+					this.state.cheeseLinesOnBoard += entry.amount;
+				}
+			}
+			this.state.pendingTank.length = 0;
 			if (this.onClear) {
 				this.onClear(info, root.ZZStatsCore.computeAttack(info));
 			}
@@ -976,6 +1010,13 @@
 			this.state.perfectPieces = perfectPieces;
 			this.state.faultyPieces = Math.max(0, pieces - perfectPieces);
 			this.state.finesseFaults = Number(finesse.faults) || 0;
+			// Solo replays can start with garbage already on the board. The
+			// engine does not store hole widths, so assume it is cheese.
+			const garbageLines = this.engine.board.state.filter((row) =>
+				row.some((cell) => cell && cell.mino === 'gb')
+			).length;
+			this.state.garbageLinesOnBoard = garbageLines;
+			this.state.cheeseLinesOnBoard = garbageLines;
 		}
 
 		onGarbageChange() {
@@ -1019,7 +1060,9 @@
 			// Copy every field, including replay-only fields such as
 			// garbageSent that are not part of ZZStatsCore.createState().
 			for (const key of Object.keys(snapshot)) {
-				this.state[key] = snapshot[key];
+				this.state[key] = Array.isArray(snapshot[key])
+					? snapshot[key].slice()
+					: snapshot[key];
 			}
 		}
 

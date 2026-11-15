@@ -11,6 +11,17 @@ These sound effects are the property of TETR.IO and its licensors. They are
 included as an optional sound pack and are not covered by this project's
 license. TETR.IO is a trademark of osk.
 
+## Tetra Stats / Minomuncher stat formulas
+
+- Sources: https://github.com/dan63047/TetraStats and
+  https://github.com/MinoMuncher/minomuncher-core
+- License: GPL-3.0 (Tetra Stats), MIT (Minomuncher core)
+- Used by: the APL, Attack Cheesiness, Est. TR and playstyle calculations in
+  `stats-core.js`.
+
+The formulas are reimplemented from Tetra Stats' public wiki and Minomuncher's
+`CheeseScorer`. No source files are vendored.
+
 ## @haelp/teto (Triangle.js)
 
 - Version: 4.2.8
