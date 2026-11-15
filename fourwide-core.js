@@ -318,7 +318,10 @@
 
 		const rows = stateRows(key);
 		while (rows.length < 8) rows.push(0);
-		const locks = placements(rows, piece, 4);
+		// The residual only stores four rows, but a piece may legally lock
+		// above them (for example a vertical I on a five-row stack). Using 4
+		// here would reject those moves as lockouts and report a false break.
+		const locks = placements(rows, piece, rows.length);
 		transitions = locks.map((lock) => {
 			const nextKey = residualKeyFromRows(lock.rows);
 			const cells = lock.cells.map((c) => ({
@@ -366,7 +369,7 @@
 		return value;
 	}
 
-	function survival(key, hold, queue, index, limit, memo, budget, canHold, freeHold) {
+	function survival(key, hold, queue, index, limit, memo, budget, canHold) {
 		if (index >= limit) return { depth: 0, score: 0, path: [], breakPiece: null };
 		const memoKey =
 			key +
@@ -392,7 +395,9 @@
 				piece: hold,
 				nextHold: queue[index],
 				holdUsed: true,
-				nextCanHold: !!freeHold,
+				// The held piece locks before the next queue piece, so hold is
+				// available again regardless of the free-hold setting.
+				nextCanHold: true,
 			});
 		}
 
@@ -409,8 +414,7 @@
 					limit,
 					memo,
 					budget,
-					option.nextCanHold,
-					freeHold
+					option.nextCanHold
 				);
 				const depth = 1 + sub.depth;
 				const score =
@@ -490,7 +494,6 @@
 		const queue = payload.queue || [];
 		const lookahead = Math.max(0, Math.min(28, Math.floor(payload.lookahead || 0)));
 		const tieBreak = payload.tieBreak || 'board';
-		const freeHold = payload.freeHold !== false;
 
 		const trimmed = trimRows(rows);
 		const board = trimmed.board;
@@ -545,8 +548,7 @@
 						analysisLength,
 						memo,
 						budget,
-						nextCanHold,
-						freeHold
+						nextCanHold
 					);
 					candidate.survival = 1 + dp.depth;
 					candidate.knownSurvival = Math.min(candidate.survival, knownLength);
@@ -566,12 +568,12 @@
 
 		addRoot(piece, false, hold, true, 1);
 		if (hold !== null && hold !== undefined) {
-			addRoot(hold, true, piece, freeHold, 1);
+			addRoot(hold, true, piece, true, 1);
 		} else if (analysisQueue.length > 1) {
 			// Holding the current piece and playing the next piece is a real
 			// root move, not just a recovery fallback. The current piece goes
 			// into hold, so the survival DP starts after the next piece.
-			addRoot(analysisQueue[1], true, piece, freeHold, 2);
+			addRoot(analysisQueue[1], true, piece, true, 2);
 		}
 
 		let clearing = candidates.filter((c) => c.cleared > 0);

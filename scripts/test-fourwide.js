@@ -122,4 +122,55 @@ assert(
 	'empty hold: no hold candidate with a clear'
 );
 
+// Regression: a five-row stack must still allow placements above row 4.
+// Board from fumen v115@deC8DeF8... (well residual [14, 7, 4, 14]) with
+// queue ILOT|JITSZOL|SZJILOT|TILSZJO|SIZOJTL|. The engine used to reject
+// vertical I placements that extend above the four-row residual, so the
+// position after the recommended I x3 r1 reported a false break.
+const regressionQueueChars = 'ILOTJITSZOLSZJILOTTILSZJOSIZOJTL';
+const regressionCharToId = { I: 0, O: 1, T: 2, S: 3, Z: 4, J: 5, L: 6 };
+const regressionQueue = regressionQueueChars
+	.split('')
+	.map((c) => regressionCharToId[c]);
+const regressionRows = [14, 7, 4, 14, 0, 0, 0, 0];
+const regression = Engine.analyze({
+	rows: regressionRows,
+	piece: 0, // I
+	hold: 4, // Z
+	queue: regressionQueue,
+	lookahead: 28,
+	tieBreak: 'board',
+});
+assert(regression.best, 'regression: no best move');
+assert.strictEqual(regression.best.piece, 0, 'regression: best move is not I');
+assert.strictEqual(regression.best.x, 3, 'regression: best I is not in the right column');
+assert.strictEqual(regression.best.rotation, 1, 'regression: best I is not vertical');
+assert.strictEqual(regression.best.survival, 29, `regression: survival ${regression.best.survival}`);
+assert.strictEqual(regression.best.status, 'safe', 'regression: best move is not safe');
+assert.strictEqual(regression.approximate, false, 'regression: four-row stack marked approximate');
+
+// After I x3 r1 and one clear the stack is five rows tall. The DP must keep
+// finding the full 29-piece survival instead of stopping at 9.
+const regressionAfterRows = [14, 7, 5, 1, 1, 0, 0, 0];
+const regressionAfter = Engine.analyze({
+	rows: regressionAfterRows,
+	piece: 0, // I
+	hold: 4, // Z
+	queue: regressionQueue.slice(1),
+	lookahead: 28,
+	tieBreak: 'board',
+});
+assert(regressionAfter.best, 'regression: no best move after I x3 r1');
+assert.strictEqual(
+	regressionAfter.best.survival,
+	29,
+	`regression: after I x3 r1 survival ${regressionAfter.best.survival}`
+);
+assert.strictEqual(
+	regressionAfter.best.status,
+	'safe',
+	'regression: after I x3 r1 is not safe'
+);
+assert.strictEqual(regressionAfter.approximate, true, 'regression: five-row stack not marked approximate');
+
 console.log('fourwide-core tests passed');

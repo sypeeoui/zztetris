@@ -489,7 +489,7 @@ const fourWEngine = {
 
 	ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./fourwideWorker.js?v=6587df86');
+		this.worker = new Worker('./fourwideWorker.js?v=d75a36be');
 		this.worker.onmessage = (event) => {
 			const data = event.data || {};
 			if (data.type !== 'result' && data.type !== 'error') return;
@@ -1452,7 +1452,6 @@ function getFourWStateHash() {
 		combo: typeof combo === 'number' ? combo : -1,
 		lookahead: fourWState.settings.lookahead,
 		tieBreak: fourWState.settings.tieBreak,
-		freeHold: !!replayFreeHold,
 	});
 }
 
@@ -1839,7 +1838,6 @@ async function analyzeFourW(forceRefresh = false) {
 		queue: queueIds,
 		lookahead: fourWState.settings.lookahead,
 		tieBreak: fourWState.settings.tieBreak,
-		freeHold: !!replayFreeHold,
 		combo: typeof combo === 'number' ? combo : -1,
 	};
 	evalState.inFlight = true;

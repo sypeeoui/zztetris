@@ -1,6 +1,6 @@
 // Background worker for the 4-wide combo engine. The engine is pure JS; the
 // worker keeps the survival DP off the main thread.
-importScripts('./fourwide-core.js?v=717de43b');
+importScripts('./fourwide-core.js?v=57784f1b');
 
 self.onmessage = function (event) {
 	const data = event.data || {};
