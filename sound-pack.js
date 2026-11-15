@@ -730,7 +730,7 @@
 		playDanger(key, level, options = {}) {
 			const now = performance.now();
 			const last = this.danger.get(key) || 0;
-			if (now - last < 2000) return;
+			if (now - last < 3000) return;
 			this.danger.set(key, now);
 			this.playCue(level === 'hyper' ? 'HyperDanger' : 'Danger', {
 				...options,

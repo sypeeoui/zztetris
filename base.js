@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=c51e8e63', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=669051e5', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -4824,7 +4824,10 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		const end = well ? well.start + well.width : boardSize[0];
 		for (let y = 0; y < board.length; y++) {
 			for (let x = start; x < end; x++) {
-				if (board[y][x] && board[y][x].t !== 0) {
+				// Only settled blocks count. The active piece (t: 2) and
+				// ghost (t: 3) spawn at the top and would otherwise trigger
+				// the danger warning on every piece.
+				if (board[y][x] && board[y][x].t === 1) {
 					return board.length - y;
 				}
 			}
@@ -4837,7 +4840,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 
 		if (!zzPaused && window.ZZSoundPack) {
 			const height = dangerStackHeight();
-			const dangerLine = boardSize[1] - hiddenRows - 4;
+			const dangerLine = boardSize[1] - hiddenRows - 3;
 			if (height >= dangerLine) {
 				window.ZZSoundPack.playDanger(
 					'game',
