@@ -160,6 +160,52 @@ html.mobile #zzMobileHud canvas[hidden] {
 	display: none;
 }
 
+/* 4W combo engine status badge. */
+html.mobile #zzFourWStatus {
+	position: fixed;
+	top: calc(6px + env(safe-area-inset-top));
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 41;
+	max-width: 36vw;
+	padding: 3px 6px;
+	box-sizing: border-box;
+	background: rgba(0, 0, 0, 0.62);
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	border-radius: 6px;
+	color: #fff;
+	font-family: SLANT;
+	font-size: 10px;
+	letter-spacing: 1px;
+	line-height: 1.2;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	pointer-events: auto;
+	touch-action: manipulation;
+}
+
+html.mobile #zzFourWStatus.zzFourWStatus--safe {
+	border-color: #4caf50;
+	color: #7bd88f;
+}
+
+html.mobile #zzFourWStatus.zzFourWStatus--warning {
+	border-color: #ffc107;
+	color: #ffd166;
+}
+
+html.mobile #zzFourWStatus.zzFourWStatus--danger {
+	border-color: #f44336;
+	color: #ff7b7b;
+}
+
+html.mobile #zzFourWStatus.zzFourWStatus--neutral {
+	border-color: #4a90e2;
+	color: #9ecbff;
+}
+
 /* Compact session stats under the hold. */
 html.mobile #zzStatsMini {
 	position: fixed;

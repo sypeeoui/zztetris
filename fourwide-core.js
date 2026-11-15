@@ -367,7 +367,7 @@
 	}
 
 	function survival(key, hold, queue, index, limit, memo, budget, canHold, freeHold) {
-		if (index >= limit) return { depth: 0, score: 0, path: [] };
+		if (index >= limit) return { depth: 0, score: 0, path: [], breakPiece: null };
 		const memoKey =
 			key +
 			'|' +
@@ -380,10 +380,10 @@
 		if (cached) return cached;
 		if (budget.nodes++ > budget.maxNodes) {
 			budget.partial = true;
-			return { depth: 0, score: 0, path: [] };
+			return { depth: 0, score: 0, path: [], breakPiece: null };
 		}
 
-		let best = { depth: 0, score: 0, path: [] };
+		let best = { depth: 0, score: 0, path: [], breakPiece: queue[index] };
 		const options = [
 			{ piece: queue[index], nextHold: hold, holdUsed: false, nextCanHold: true },
 		];
@@ -425,6 +425,7 @@
 						depth,
 						score,
 						path: [move].concat(sub.path),
+						breakPiece: sub.breakPiece,
 					};
 				}
 			}
@@ -476,6 +477,7 @@
 			cleared,
 			nextKey,
 			nextHold,
+			nextIndex: 0,
 		};
 		return candidate;
 	}
@@ -505,7 +507,7 @@
 		const budget = { nodes: 0, maxNodes: 500000, partial: false };
 		const candidates = [];
 
-		function addRoot(pieceId, holdUsed, nextHold, nextCanHold) {
+		function addRoot(pieceId, holdUsed, nextHold, nextCanHold, startIndex) {
 			const locks = placements(board, pieceId, boardHeight);
 			for (let i = 0; i < locks.length; i++) {
 				const lock = locks[i];
@@ -533,12 +535,13 @@
 					analysisLength,
 					tieBreak
 				);
+				candidate.nextIndex = startIndex;
 				if (lock.cleared > 0) {
 					const dp = survival(
 						nextKey,
 						nextHold,
 						analysisQueue,
-						1,
+						startIndex,
 						analysisLength,
 						memo,
 						budget,
@@ -549,9 +552,7 @@
 					candidate.knownSurvival = Math.min(candidate.survival, knownLength);
 					candidate.route = [move].concat(dp.path);
 					candidate.breakPiece =
-						candidate.survival < analysisLength
-							? analysisQueue[candidate.survival]
-							: null;
+						candidate.survival < knownLength ? dp.breakPiece : null;
 					candidate.status =
 						candidate.survival >= knownLength
 							? 'safe'
@@ -563,9 +564,14 @@
 			}
 		}
 
-		addRoot(piece, false, hold, true);
+		addRoot(piece, false, hold, true, 1);
 		if (hold !== null && hold !== undefined) {
-			addRoot(hold, true, piece, freeHold);
+			addRoot(hold, true, piece, freeHold, 1);
+		} else if (analysisQueue.length > 1) {
+			// Holding the current piece and playing the next piece is a real
+			// root move, not just a recovery fallback. The current piece goes
+			// into hold, so the survival DP starts after the next piece.
+			addRoot(analysisQueue[1], true, piece, freeHold, 2);
 		}
 
 		let clearing = candidates.filter((c) => c.cleared > 0);
@@ -587,41 +593,10 @@
 			const recovery = [];
 			const rootOptions = [];
 			for (let i = 0; i < candidates.length; i++) {
-				rootOptions.push({ candidate: candidates[i], nextIndex: 1 });
-			}
-			// Holding the current piece and playing the next piece is a valid
-			// recovery option when the hold slot is empty.
-			if ((hold === null || hold === undefined) && analysisQueue.length > 1) {
-				const nextPiece = analysisQueue[1];
-				const locks = placements(board, nextPiece, boardHeight);
-				for (let i = 0; i < locks.length; i++) {
-					const lock = locks[i];
-					const nextKey = residualKeyFromRows(lock.rows);
-					const move = {
-						piece: nextPiece,
-						x: lock.x + WELL_START,
-						y: lock.y,
-						rotation: lock.rot,
-						cells: lock.cells.map((c) => ({
-							x: c.x + WELL_START,
-							y: c.y,
-							piece: PIECE_CHARS[nextPiece],
-						})),
-						path: lock.path,
-						holdUsed: true,
-						cleared: lock.cleared,
-					};
-					const candidate = makeCandidate(
-						move,
-						nextKey,
-						piece,
-						lock.cleared,
-						analysisQueue,
-						analysisLength,
-						tieBreak
-					);
-					rootOptions.push({ candidate, nextIndex: 2 });
-				}
+				rootOptions.push({
+					candidate: candidates[i],
+					nextIndex: candidates[i].nextIndex,
+				});
 			}
 
 			for (let i = 0; i < rootOptions.length; i++) {
@@ -648,7 +623,10 @@
 				candidate.survival = 0;
 				candidate.knownSurvival = 0;
 				candidate.status = 'danger';
-				candidate.breakPiece = analysisQueue.length > 1 ? analysisQueue[1] : null;
+				candidate.breakPiece =
+					candidate.nextIndex < analysisQueue.length
+						? analysisQueue[candidate.nextIndex]
+						: null;
 				candidate.eval = nextEval;
 				candidate.clearability = nextClearability;
 				candidate.recoveryScore = nextClear * 1000 + nextClearability * 10 + nextEval;

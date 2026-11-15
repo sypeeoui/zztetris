@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-d51eb311';
+	const SW_CACHE_VERSION = 'zztetris-mobile-e56c948b';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -334,6 +334,7 @@
 	function openSubSheet(id, parent) {
 		subSheetParent = parent || null;
 		if (parent) hide(parent);
+		if (id === 'zzBoardSheet') syncFourWEngineControls();
 		show(id);
 	}
 
@@ -544,6 +545,10 @@
 			'<canvas id="zzHoldMini" width="52" height="35" title="Hold — open board settings"></canvas>' +
 			'<canvas id="zzNextMini" width="52" height="175" title="Next queue — open queue settings"></canvas>';
 		document.body.appendChild(hud);
+		const fourWBadge = document.createElement('div');
+		fourWBadge.id = 'zzFourWStatus';
+		fourWBadge.hidden = true;
+		document.body.appendChild(fourWBadge);
 		const hold = $('zzHoldMini');
 		const next = $('zzNextMini');
 		if (hold) {
@@ -558,6 +563,10 @@
 				openQueueSheet('zzPauseMenu');
 			});
 		}
+		fourWBadge.addEventListener('click', () => {
+			setPaused(true);
+			openSubSheet('zzBoardSheet', 'zzPauseMenu');
+		});
 		updateHudVisibility();
 	}
 
@@ -627,6 +636,7 @@
 	}
 
 	function updateStatsMini() {
+		updateFourWStatusBadge();
 		const stats = $('zzStatsMini');
 		if (!stats || stats.hidden) return;
 		const core = window.ZZStatsCore;
@@ -859,6 +869,7 @@
 
 	function openPause() {
 		setPaused(true);
+		updateFourWEngineUi();
 		show('zzPauseMenu');
 	}
 
@@ -883,6 +894,7 @@
 			'<button class="zzSheetBtn" data-action="redo">Redo</button>' +
 			'</div>' +
 			'<button class="zzSheetBtn" data-action="restart">Reset Board</button>' +
+			'<button class="zzSheetBtn" data-action="fourw-engine" hidden>4W Combo Engine: Off</button>' +
 			'<button class="zzSheetBtn" data-action="board">Board</button>' +
 			'<button class="zzSheetBtn" data-action="queue">Queue</button>' +
 			'<button class="zzSheetBtn" data-action="settings">Settings</button>' +
@@ -926,6 +938,11 @@
 		overlay.querySelector('[data-action="restart"]').addEventListener('click', () => {
 			closePause();
 			if (typeof restart === 'function') restart();
+		});
+		overlay.querySelector('[data-action="fourw-engine"]').addEventListener('click', () => {
+			const enabled = !(typeof evalState !== 'undefined' && evalState.enabled);
+			if (typeof setFourWEngineEnabled === 'function') setFourWEngineEnabled(enabled);
+			updateFourWEngineUi();
 		});
 		overlay
 			.querySelector('[data-action="board"]')
@@ -2370,9 +2387,123 @@
 
 		const body = $('zzBoardBody');
 		const boardOptions = $('boardOptionsContent');
+		if (body) {
+			const fourW = document.createElement('div');
+			fourW.id = 'zzFourWEngineSection';
+			fourW.hidden = true;
+			fourW.innerHTML =
+				'<div class="zzSheetRow"><label><b>4W Combo Engine</b></label></div>' +
+				'<div class="zzSheetRow"><label>Enable engine</label><input type="checkbox" id="zzFourWEnabled"></div>' +
+				'<div class="zzSheetRow"><label>Show next placement</label><input type="checkbox" id="zzFourWShowNext"></div>' +
+				'<div class="zzSheetRow"><label>Show full route</label><input type="checkbox" id="zzFourWShowRoute"></div>' +
+				'<div class="zzSheetRow"><label>Show combo survival</label><input type="checkbox" id="zzFourWShowSurvival"></div>' +
+				'<div class="zzSheetRow"><label>Lookahead</label><input type="number" id="zzFourWLookahead" min="0" max="28" step="1" inputmode="numeric"></div>' +
+				'<div class="zzSheetRow"><label>Tie-break</label><select id="zzFourWTieBreak"><option value="board">Board quality</option><option value="flex">Flexibility</option><option value="low">Lowest stack</option></select></div>';
+			body.appendChild(fourW);
+			bindFourWEngineControls();
+		}
 		if (body && boardOptions) body.appendChild(boardOptions);
 		const practice = $('practiceLayers')?.closest('.nav-section');
 		if (body && practice) body.appendChild(practice);
+		updateFourWEngineUi();
+	}
+
+	function bindFourWEngineControls() {
+		$('zzFourWEnabled')?.addEventListener('change', (event) => {
+			if (typeof setFourWEngineEnabled === 'function') {
+				setFourWEngineEnabled(!!event.target.checked);
+			}
+			updateFourWEngineUi();
+		});
+		['zzFourWShowNext', 'zzFourWShowRoute', 'zzFourWShowSurvival'].forEach((id) => {
+			$(id)?.addEventListener('change', () => {
+				if (typeof fourWState === 'undefined') return;
+				fourWState.settings.showNext = !!$('zzFourWShowNext')?.checked;
+				fourWState.settings.showRoute = !!$('zzFourWShowRoute')?.checked;
+				fourWState.settings.showSurvival = !!$('zzFourWShowSurvival')?.checked;
+				if (typeof persistFourWSettings === 'function') persistFourWSettings();
+				if (typeof applyFourWSettingsToUi === 'function') applyFourWSettingsToUi();
+				if (typeof rebuildFourWOverlay === 'function') rebuildFourWOverlay();
+			});
+		});
+		$('zzFourWLookahead')?.addEventListener('change', () => {
+			if (typeof fourWState === 'undefined') return;
+			const input = $('zzFourWLookahead');
+			const value = Math.max(0, Math.min(28, Math.floor(Number(input?.value) || 0)));
+			fourWState.settings.lookahead = value;
+			if (input) input.value = String(value);
+			if (typeof persistFourWSettings === 'function') persistFourWSettings();
+			if (typeof applyFourWSettingsToUi === 'function') applyFourWSettingsToUi();
+			if (
+				typeof analyzeFourW === 'function' &&
+				typeof evalState !== 'undefined' &&
+				evalState.enabled
+			) {
+				analyzeFourW(true);
+			}
+		});
+		$('zzFourWTieBreak')?.addEventListener('change', () => {
+			if (typeof fourWState === 'undefined') return;
+			fourWState.settings.tieBreak = $('zzFourWTieBreak')?.value || 'board';
+			if (typeof persistFourWSettings === 'function') persistFourWSettings();
+			if (typeof applyFourWSettingsToUi === 'function') applyFourWSettingsToUi();
+			if (
+				typeof analyzeFourW === 'function' &&
+				typeof evalState !== 'undefined' &&
+				evalState.enabled
+			) {
+				analyzeFourW(true);
+			}
+		});
+	}
+
+	function syncFourWEngineControls() {
+		if (typeof fourWState === 'undefined') return;
+		const settings = fourWState.settings;
+		const setChecked = (id, value) => {
+			const el = $(id);
+			if (el) el.checked = !!value;
+		};
+		setChecked('zzFourWEnabled', typeof evalState !== 'undefined' && evalState.enabled);
+		setChecked('zzFourWShowNext', settings.showNext);
+		setChecked('zzFourWShowRoute', settings.showRoute);
+		setChecked('zzFourWShowSurvival', settings.showSurvival);
+		const lookahead = $('zzFourWLookahead');
+		if (lookahead) lookahead.value = String(settings.lookahead);
+		const tieBreak = $('zzFourWTieBreak');
+		if (tieBreak) tieBreak.value = settings.tieBreak;
+	}
+
+	function updateFourWEngineUi() {
+		const fourW = typeof isFourWMode === 'function' && isFourWMode();
+		const enabled = typeof evalState !== 'undefined' && evalState.enabled;
+		const button = document.querySelector('#zzPauseMenu [data-action="fourw-engine"]');
+		if (button) {
+			button.hidden = !fourW;
+			button.textContent = '4W Combo Engine: ' + (enabled ? 'On' : 'Off');
+		}
+		const section = $('zzFourWEngineSection');
+		if (section) section.hidden = !fourW;
+		syncFourWEngineControls();
+		updateFourWStatusBadge();
+	}
+
+	function updateFourWStatusBadge() {
+		const badge = $('zzFourWStatus');
+		if (!badge) return;
+		const fourW = typeof isFourWMode === 'function' && isFourWMode();
+		const enabled = typeof evalState !== 'undefined' && evalState.enabled;
+		if (!fourW || !enabled || params.get('menu') === '1') {
+			badge.hidden = true;
+			return;
+		}
+		badge.hidden = false;
+		const info =
+			typeof getFourWStatusInfo === 'function'
+				? getFourWStatusInfo()
+				: { text: '4W: analyzing…', status: 'neutral' };
+		badge.textContent = info.text;
+		badge.className = 'zzFourWStatus--' + info.status;
 	}
 
 	function buildQueueSheet() {

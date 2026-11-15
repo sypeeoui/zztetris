@@ -87,4 +87,39 @@ for (const lookahead of [0, 7, 14, 21, 28]) {
 	previous = result.best.survival;
 }
 
+// Holding the current piece and playing the next piece is a root move even
+// when the hold slot is empty.
+const holdRows = [0b0111, 0b0111, 0, 0, 0, 0, 0, 0];
+const holdQueue = [0, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6];
+const holdResult = Engine.analyze({
+	rows: holdRows,
+	piece: 1, // O
+	hold: null,
+	queue: holdQueue,
+	lookahead: 28,
+	tieBreak: 'board',
+});
+assert(holdResult.best, 'empty hold: no best move');
+assert(holdResult.best.holdUsed, 'empty hold: best move does not use hold');
+assert.strictEqual(holdResult.best.piece, 0, 'empty hold: best move is not the next piece');
+assert(holdResult.best.cleared > 0, 'empty hold: best move does not clear');
+assert.strictEqual(holdResult.best.nextIndex, 2, 'empty hold: survival starts at the wrong queue index');
+assert.strictEqual(holdResult.best.route[0].piece, 0, 'empty hold: route does not start with the next piece');
+assert.strictEqual(holdResult.best.route[0].holdUsed, true, 'empty hold: route does not mark hold');
+
+// The hold root is considered even when the current piece can clear.
+const holdClearRows = [0b0111, 0, 0, 0, 0, 0, 0, 0];
+const holdClearResult = Engine.analyze({
+	rows: holdClearRows,
+	piece: 2, // T
+	hold: null,
+	queue: holdQueue,
+	lookahead: 28,
+	tieBreak: 'board',
+});
+assert(
+	holdClearResult.candidates.some((c) => c.holdUsed && c.cleared > 0),
+	'empty hold: no hold candidate with a clear'
+);
+
 console.log('fourwide-core tests passed');

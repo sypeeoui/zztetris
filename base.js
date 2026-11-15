@@ -489,7 +489,7 @@ const fourWEngine = {
 
 	ensureWorker() {
 		if (this.worker) return;
-		this.worker = new Worker('./fourwideWorker.js?v=61ffb8b9');
+		this.worker = new Worker('./fourwideWorker.js?v=6587df86');
 		this.worker.onmessage = (event) => {
 			const data = event.data || {};
 			if (data.type !== 'result' && data.type !== 'error') return;
@@ -1487,6 +1487,14 @@ function loadFourWSettings() {
 	fourWState.settings.showSurvival = fourWState.settings.showSurvival !== false;
 }
 
+function persistFourWSettings() {
+	try {
+		localStorage.setItem(FOURW_SETTINGS_KEY, JSON.stringify(fourWState.settings));
+	} catch (error) {
+		// Storage can be unavailable in private mode.
+	}
+}
+
 function saveFourWSettingsFromUi() {
 	const settings = fourWState.settings;
 	settings.showNext = !!getEvalElement('fourWShowNext')?.checked;
@@ -1498,11 +1506,7 @@ function saveFourWSettingsFromUi() {
 		Math.min(28, Math.floor(readNumberInput('fourWLookahead', 28, 0)))
 	);
 	settings.tieBreak = getEvalElement('fourWTieBreak')?.value || 'board';
-	try {
-		localStorage.setItem(FOURW_SETTINGS_KEY, JSON.stringify(settings));
-	} catch (error) {
-		// Storage can be unavailable in private mode.
-	}
+	persistFourWSettings();
 }
 
 function applyFourWSettingsToUi() {
@@ -1573,7 +1577,8 @@ function updateFourWStatus(data) {
 		statusText = `Combo breaks now — no clearing move. Best recovery: ${describeFourWMove(best)}.`;
 	} else {
 		statusClass = 'fourw-status--warning';
-		statusText = `Combo at risk — breaks at +${knownDepth} (${breakPiece}) after ${knownDepth}/${known} known pieces.`;
+		const breakLabel = breakPiece ? ` (${breakPiece})` : '';
+		statusText = `Combo at risk — breaks at +${knownDepth}${breakLabel} after ${knownDepth}/${known} known pieces.`;
 	}
 	statusEl.className = 'fourw-status ' + statusClass;
 	statusEl.textContent = statusText;
@@ -1589,6 +1594,36 @@ function updateFourWStatus(data) {
 	if (barKnown) barKnown.style.width = knownPct + '%';
 	if (barBreak) barBreak.style.width = breakPct + '%';
 	updateFourWBoardStatus(data);
+}
+
+function getFourWStatusInfo() {
+	const data = fourWState.latestData;
+	if (!data) return { text: '4W: analyzing…', status: 'neutral' };
+	const best = data.best;
+	const survival = best ? best.survival : 0;
+	const known = data.knownLength || 0;
+	const knownDepth = Math.min(survival, known);
+	const comboActive = typeof combo === 'number' && combo >= 0;
+	if (!comboActive) {
+		return {
+			text: survival > 0 ? `4W: chain ${knownDepth}/${known}` : '4W: no clear',
+			status: 'neutral',
+		};
+	}
+	if (knownDepth >= known) {
+		return { text: `4W: safe ${known}/${known}`, status: 'safe' };
+	}
+	if (knownDepth === 0) {
+		return { text: '4W: break', status: 'danger' };
+	}
+	const breakPiece =
+		data.breakPiece !== null && data.breakPiece !== undefined
+			? enginePieceToChar[data.breakPiece]
+			: '';
+	return {
+		text: `4W: +${knownDepth}${breakPiece ? ` (${breakPiece})` : ''}`,
+		status: 'warning',
+	};
 }
 
 function updateFourWBoardStatus(data) {
@@ -4031,14 +4066,13 @@ window.evalDebugDump = async function evalDebugDump(options = {}) {
 
 function setEvaluationMode(enabled) {
 	evalState.enabled = enabled;
-	evalState.optionsHidden = enabled;
+	// The generic engine hides the board options to save space. In 4W modes
+	// the combo panel replaces only the engine section, so keep the queue,
+	// hold, color, gravity and garbage controls visible.
+	evalState.optionsHidden = isFourWMode() ? false : enabled;
 	if (isFourWMode()) {
 		fourWState.settings.enabled = enabled;
-		try {
-			localStorage.setItem(FOURW_SETTINGS_KEY, JSON.stringify(fourWState.settings));
-		} catch (error) {
-			// Storage can be unavailable in private mode.
-		}
+		persistFourWSettings();
 	}
 	if (!enabled) {
 		evalState.overlayCells = [];
@@ -4054,6 +4088,14 @@ function setEvaluationMode(enabled) {
 	if (enabled) {
 		analyzeWithEngine(true);
 	}
+}
+
+function setFourWEngineEnabled(enabled) {
+	fourWState.settings.enabled = !!enabled;
+	persistFourWSettings();
+	const toggle = getEvalElement('evalModeToggle');
+	if (toggle) toggle.checked = !!enabled;
+	setEvaluationMode(!!enabled);
 }
 
 function initEvaluationUi() {
