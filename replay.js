@@ -925,6 +925,7 @@
 			onClear: handleClear,
 			onGarbage: handleGarbage,
 			onAction: handleAction,
+			onTopOut: handleTopOut,
 		});
 		state.maxFrame = round.maxFrame;
 		state.keyframes = [];
@@ -1200,7 +1201,7 @@
 			if (target < state.currentFrame) {
 				state.finishPlayed = false;
 				for (const entry of state.entries) {
-					entry.topOutPlayed = false;
+					entry.topOut = false;
 				}
 				const keyframe = C.findKeyframe(state.keyframes, target);
 				if (keyframe) {
@@ -1302,10 +1303,6 @@
 				!mobile || !portrait || entry.player.id === state.activePlayerId;
 			if (!isActive) continue;
 			C.renderBoard(card.board, entry.engine, { cellSize });
-			if (state.playing && !entry.player.alive && !entry.topOutPlayed) {
-				entry.topOutPlayed = true;
-				audio.playTopOut(playerPan(entry.player));
-			}
 			const queueWidth = mobile ? queueCell * 4 : 90;
 			const holdWidth = mobile ? holdCell * 4 : 90;
 			C.renderQueue(
@@ -1348,7 +1345,7 @@
 			if (updateStats) {
 				const isFinal = state.currentFrame >= entry.player.frames;
 				if (mobile) {
-					if (state.statsOpen) {
+					if (state.statsOpen || state.immersive) {
 						card.compactStats.update(
 							entry.tracker,
 							entry.engine,
@@ -1370,7 +1367,7 @@
 					entry.player.id,
 					playerPan(entry.player),
 					entry.engine,
-					isActive && entry.player.alive
+					isActive && !entry.topOut
 				);
 			}
 		}
@@ -1561,6 +1558,14 @@
 
 	function handleGarbage(player, type, event) {
 		audio.playGarbage(playerPan(player), type, event);
+	}
+
+	function handleTopOut(player) {
+		const entry = state.entries.find(
+			(item) => item.player.id === player.id
+		);
+		if (entry) entry.topOut = true;
+		audio.playTopOut(playerPan(player));
 	}
 
 	function handleAction(player, action) {

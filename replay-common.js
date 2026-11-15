@@ -317,6 +317,9 @@
 				player.engineConfig = buildEngineConfig(player, round, data);
 				return player;
 			});
+			// Keep each player on the same side across rounds. The replay's
+			// round array is ordered by the winner, but naturalorder is stable.
+			players.sort((a, b) => a.naturalorder - b.naturalorder);
 			const maxFrame = players.reduce(
 				(max, player) => Math.max(max, player.frames),
 				0
@@ -783,6 +786,7 @@
 			this.engine = engine;
 			this.onClear = options.onClear || null;
 			this.onGarbage = options.onGarbage || null;
+			this.onTopOut = options.onTopOut || null;
 			this.state = root.ZZStatsCore.createState(0);
 			this.state.lastAttack = 0;
 			this.finesseTable = null;
@@ -857,6 +861,7 @@
 		}
 
 		onLock(res) {
+			if (res.topout && this.onTopOut) this.onTopOut();
 			const placement = this.lastPlacement;
 			this.lastPlacement = null;
 			const piece = String(res.mino || '').toUpperCase();
@@ -1050,6 +1055,9 @@
 					: null,
 				onGarbage: options.onGarbage
 					? (type, event) => options.onGarbage(player, type, event)
+					: null,
+				onTopOut: options.onTopOut
+					? () => options.onTopOut(player)
 					: null,
 			});
 			if (player.solo?.full?.data?.stats) {

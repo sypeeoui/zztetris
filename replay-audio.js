@@ -193,7 +193,7 @@
 					category: 'clear',
 				});
 			} else if (cleared === 4) {
-				this.play('ClearQuad', {
+				this.play(b2b > 1 ? 'ClearB2B' : 'ClearQuad', {
 					volume,
 					pan,
 					category: 'clear',
@@ -203,19 +203,6 @@
 					volume,
 					pan,
 					category: 'clear',
-				});
-			}
-
-			if (!pc && b2b > 1) {
-				this.play('ClearB2B', {
-					volume,
-					pan,
-					category: 'clear',
-				});
-				this.playCue('B2B' + Math.min(3, b2b), {
-					volume,
-					pan,
-					category: 'b2b',
 				});
 			}
 
@@ -243,9 +230,8 @@
 					category: 'garbage',
 				});
 			} else if (type === 'tank') {
-				const level = Math.max(1, Math.min(4, Math.ceil(amount / 2)));
-				this.play('GarbageWindup' + level, {
-					volume: volume * 0.8,
+				this.play('Garbage' + size, {
+					volume,
 					pan,
 					category: 'garbage',
 				});

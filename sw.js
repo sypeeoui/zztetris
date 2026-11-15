@@ -4,7 +4,7 @@
 // pick up the new files. The 23 MB legal-boards database and the research
 // pc_data.json are deliberately not precached; the mobile shell does not use
 // the analyzer.
-const CACHE_VERSION = 'zztetris-mobile-5e062be9';
+const CACHE_VERSION = 'zztetris-mobile-1dd66ef9';
 
 const ASSETS = [
 	'./index.html?mobile=1',
@@ -14,18 +14,18 @@ const ASSETS = [
 	'./styles/replay.css?v=b7d0e65f',
 	'./styles/replay-mobile.css?v=8282d2f7',
 	'./replay.html',
-	'./replay.js?v=af33a747',
+	'./replay.js?v=b8b8dd04',
 	'./replay-api.js?v=b9cad92a',
 	'./sound-pack.js?v=2d5fce9a',
-	'./replay-audio.js?v=887695ca',
+	'./replay-audio.js?v=f8546c48',
 	'./replay-practice.js?v=ff40dac7',
-	'./replay-common.js?v=a8cf0cad',
+	'./replay-common.js?v=cc7cd7cc',
 	'./replay-engine.js?v=db2dd99e',
 	'./styles/paint_bucket.css',
 	'./styles/import_export.css',
 	'./styles/board_settings.css',
-	'./mobile.js?v=a06159cd',
-	'./base.js?v=4f59a36f',
+	'./mobile.js?v=4058cf2b',
+	'./base.js?v=65b0024e',
 	'./zztetris.js?v=c0ea6561',
 	'./stats-config.js?v=294eb553',
 	'./stats-core.js?v=b55729b4',

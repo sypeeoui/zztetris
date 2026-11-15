@@ -4809,13 +4809,13 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			} else if (tspin || mini) {
 				playSnd('ClearSpin');
 			} else if (cleared === 4) {
-				playSnd('ClearQuad');
+				if (b2bEligible && b2b > 1) {
+					playSnd('ClearB2B');
+				} else {
+					playSnd('ClearQuad');
+				}
 			} else {
 				playSnd('ClearLine');
-			}
-			if (!pc && b2bEligible && b2b > 1) {
-				playSnd('ClearB2B');
-				playSnd('B2B' + Math.min(3, b2b));
 			}
 			if (combo > 0) {
 				playSnd('Combo' + Math.min(16, combo));
