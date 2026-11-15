@@ -27,7 +27,7 @@
 	// Also put the SW cache version in the registration URL. The CDN caches
 	// sw.js by full URL for hours, so the pair must never be reused with new
 	// content. Keep this in sync with CACHE_VERSION in sw.js.
-	const SW_CACHE_VERSION = 'zztetris-mobile-373ac8dc';
+	const SW_CACHE_VERSION = 'zztetris-mobile-d51eb311';
 
 	const ACTIONS = [
 		{ value: '', label: 'None' },
@@ -353,6 +353,7 @@
 	buildHud();
 	buildStatsMini();
 	buildPauseButton();
+	buildUndoButton();
 	buildPortraitControls();
 	buildPortraitButtons();
 	buildLandscapeControls();
@@ -752,6 +753,54 @@
 		applyPauseCorner();
 	}
 
+	function buildUndoButton() {
+		const button = document.createElement('button');
+		button.id = 'zzUndoBtn';
+		button.type = 'button';
+		button.setAttribute('aria-label', 'Undo (hold for redo)');
+		button.title = 'Undo — hold for redo';
+		button.innerHTML =
+			'<svg viewBox="0 0 24 24" aria-hidden="true">' +
+			'<path d="M9 7H5v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>' +
+			'<path d="M5 11a7 7 0 1 0 2.1-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>' +
+			'</svg>';
+		if (params.get('menu') === '1') button.hidden = true;
+
+		let longPressTimer = null;
+		let longPressed = false;
+		const clearTimer = () => {
+			if (longPressTimer) {
+				clearTimeout(longPressTimer);
+				longPressTimer = null;
+			}
+		};
+		const start = (event) => {
+			if (event.button !== undefined && event.button !== 0) return;
+			longPressed = false;
+			clearTimer();
+			longPressTimer = setTimeout(() => {
+				longPressTimer = null;
+				longPressed = true;
+				if (typeof redo === 'function') redo();
+			}, 500);
+		};
+		const end = () => {
+			clearTimer();
+			if (longPressed) {
+				longPressed = false;
+				return;
+			}
+			if (typeof undo === 'function') undo();
+		};
+		button.addEventListener('pointerdown', start);
+		button.addEventListener('pointerup', end);
+		button.addEventListener('pointercancel', clearTimer);
+		button.addEventListener('pointerleave', clearTimer);
+		button.addEventListener('contextmenu', (event) => event.preventDefault());
+		document.body.appendChild(button);
+		applyPauseCorner();
+	}
+
 	function applyPauseCorner() {
 		const button = $('zzPauseBtn');
 		if (!button) return;
@@ -763,7 +812,20 @@
 		button.style.left = corner.endsWith('left') ? 'calc(8px + env(safe-area-inset-left))' : 'auto';
 		button.style.right = corner.endsWith('right') ? 'calc(8px + env(safe-area-inset-right))' : 'auto';
 
-		// Keep the hold/next strips clear of the pause button.
+		const undo = $('zzUndoBtn');
+		if (undo) {
+			undo.style.top = button.style.top;
+			undo.style.bottom = button.style.bottom;
+			if (corner.endsWith('right')) {
+				undo.style.right = 'calc(58px + env(safe-area-inset-right))';
+				undo.style.left = 'auto';
+			} else {
+				undo.style.left = 'calc(58px + env(safe-area-inset-left))';
+				undo.style.right = 'auto';
+			}
+		}
+
+		// Keep the hold/next strips clear of the pause and undo buttons.
 		const hold = $('zzHoldMini');
 		const next = $('zzNextMini');
 		if (hold) {
@@ -778,6 +840,13 @@
 					? 'calc(56px + env(safe-area-inset-top))'
 					: 'calc(6px + env(safe-area-inset-top))';
 			next.style.top = nextTop;
+			if (orientation === 'landscape') {
+				next.style.left =
+					corner === 'top-left'
+						? 'calc(116px + env(safe-area-inset-left))'
+						: 'calc(66px + env(safe-area-inset-left))';
+				next.style.right = 'auto';
+			}
 		}
 		updateHudVisibility();
 	}

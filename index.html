@@ -12,18 +12,18 @@
 	<script defer src="replay-engine.js?v=db2dd99e"></script>
 	<script defer src="replay-common.js?v=25242f8b"></script>
 	<script defer src="sound-pack.js?v=2d5fce9a"></script>
-	<script defer src="base.js?v=d9f2ead4"></script>
+	<script defer src="base.js?v=ddc921b4"></script>
 	<script defer src="tetrio.js"></script>
-	<script defer src="zztetris.js?v=838bfdde"></script>
+	<script defer src="zztetris.js?v=aa6bc516"></script>
 	<script defer src="stats.js?v=e29c2d2f"></script>
 	<script defer src="attack-sim.js?v=1f90ace9"></script>
 	<script defer src="auto-lock.js?v=355903c7"></script>
 	<script defer src="replay-practice.js?v=ff40dac7"></script>
-	<script defer src="mobile.js?v=41d25377"></script>
+	<script defer src="mobile.js?v=85074542"></script>
 	<link rel="stylesheet" href="assets/vendor/animate.min.css" />
 	<link rel="icon" href="./assets/pieceSprite/z.png" />
-	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=3329382f" />
-	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=14074b50" />
+	<link rel="stylesheet" type="text/css" href="styles/zztetris.css?v=bfe3074a" />
+	<link rel="stylesheet" type="text/css" href="styles/mobile.css?v=7b0bc79e" />
 	<link rel="stylesheet" type="text/css" href="styles/paint_bucket.css" />
 	<link rel="stylesheet" type="text/css" href="styles/import_export.css" />
 	<link rel="stylesheet" type="text/css" href="styles/board_settings.css" />
@@ -261,7 +261,55 @@
 						<button class="button" id="evalToggleOptionsBtn" type="button" disabled>Show Options</button>
 					</div>
 
-					<details class="eval-group" open>
+					<div id="fourWPanel" class="fourw-only">
+						<div class="fourw-status-row">
+							<div class="fourw-status" id="fourWStatus">4W Combo Engine is off.</div>
+							<div class="fourw-detail" id="fourWDetail"></div>
+						</div>
+						<div class="fourw-survival-bar" id="fourWSurvivalBar">
+							<div class="fourw-survival-known" id="fourWBarKnown"></div>
+							<div class="fourw-survival-break" id="fourWBarBreak"></div>
+						</div>
+						<details class="eval-group" open>
+							<summary>4W Combo Engine</summary>
+							<div class="eval-group-body">
+								<div class="eval-row">
+									<input type="checkbox" id="fourWShowNext" checked />
+									<label for="fourWShowNext">Show next placement</label>
+								</div>
+								<div class="eval-row">
+									<input type="checkbox" id="fourWShowRoute" />
+									<label for="fourWShowRoute">Show full route</label>
+								</div>
+								<div class="eval-row">
+									<input type="checkbox" id="fourWShowAll" />
+									<label for="fourWShowAll">Show all placements</label>
+								</div>
+								<div class="eval-row">
+									<input type="checkbox" id="fourWShowSurvival" checked />
+									<label for="fourWShowSurvival">Show combo survival</label>
+								</div>
+								<div class="eval-row eval-row--stack">
+									<label for="fourWLookahead">Lookahead pieces (max 28)</label>
+									<input id="fourWLookahead" type="number" min="0" max="28" step="1" value="28" />
+								</div>
+								<div class="eval-row eval-row--stack">
+									<label for="fourWTieBreak">Tie-break</label>
+									<select id="fourWTieBreak">
+										<option value="board">Board quality</option>
+										<option value="flex">Flexibility</option>
+										<option value="low">Lowest stack</option>
+									</select>
+								</div>
+							</div>
+						</details>
+						<div class="eval-row eval-row--stack eval-row--full">
+							<label>Placements</label>
+							<div id="fourWRoutesList" class="eval-routes-list"></div>
+						</div>
+					</div>
+
+					<details class="eval-group generic-eval-only" open>
 						<summary>Engine</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack">
@@ -287,7 +335,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group" open>
+					<details class="eval-group generic-eval-only" open>
 						<summary>Search</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack">
@@ -333,7 +381,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group fusion-only">
+					<details class="eval-group fusion-only generic-eval-only">
 						<summary>Evaluation Weights</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack">
@@ -375,7 +423,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group fusion-only">
+					<details class="eval-group fusion-only generic-eval-only">
 						<summary>Attack Logic</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack">
@@ -418,7 +466,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group fusion-only">
+					<details class="eval-group fusion-only generic-eval-only">
 						<summary>PC &amp; Presets</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack eval-row--full">
@@ -440,7 +488,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group falcon-only" style="display: none;">
+					<details class="eval-group falcon-only generic-eval-only" style="display: none;">
 						<summary>Falcon Weights</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--stack">
@@ -506,7 +554,7 @@
 						</div>
 					</details>
 
-					<details class="eval-group" open>
+					<details class="eval-group generic-eval-only" open>
 						<summary>Playback &amp; Chain</summary>
 						<div class="eval-group-body">
 							<div class="eval-row eval-row--full">
@@ -531,13 +579,13 @@
 						</div>
 					</details>
 
-					<div class="eval-row eval-row--stack eval-row--full">
+					<div class="eval-row eval-row--stack eval-row--full generic-eval-only">
 						<label>Routes</label>
 						<div id="evalRoutesList" class="eval-routes-list"></div>
 					</div>
-					<div class="eval-status" id="evalStatus">Evaluation is disabled.</div>
-					<div class="eval-scores" id="evalScores"></div>
-					<div class="eval-pv" id="evalPv"></div>
+					<div class="eval-status generic-eval-only" id="evalStatus">Evaluation is disabled.</div>
+					<div class="eval-scores generic-eval-only" id="evalScores"></div>
+					<div class="eval-pv generic-eval-only" id="evalPv"></div>
 				</div>
 
 <div id="boardOptionsContent">

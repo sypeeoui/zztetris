@@ -204,8 +204,9 @@ html.mobile #zzStatsMini .zzStatRow b {
 	text-overflow: ellipsis;
 }
 
-/* Pause / menu button. */
-html.mobile #zzPauseBtn {
+/* Pause / menu and direct undo buttons. */
+html.mobile #zzPauseBtn,
+html.mobile #zzUndoBtn {
 	position: fixed;
 	z-index: 60;
 	width: 44px;
@@ -221,14 +222,16 @@ html.mobile #zzPauseBtn {
 	touch-action: manipulation;
 }
 
-html.mobile #zzPauseBtn svg {
+html.mobile #zzPauseBtn svg,
+html.mobile #zzUndoBtn svg {
 	width: 22px;
 	height: 22px;
 	fill: currentColor;
 	pointer-events: none;
 }
 
-html.mobile #zzPauseBtn:active {
+html.mobile #zzPauseBtn:active,
+html.mobile #zzUndoBtn:active {
 	background: rgba(76, 175, 80, 0.6);
 }
 

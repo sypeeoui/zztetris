@@ -1,6 +1,12 @@
 const urlParams = new URLSearchParams(window.location.search);
 const mode = urlParams.get('mode') || 'practice';
 
+// Hide the generic analyzer controls before the game finishes loading in 4W
+// modes; the dedicated combo panel takes over.
+if (mode === '4w' || mode === '4w4res' || mode === '4w5res' || mode === '4w6res') {
+	document.getElementById('evalPanel')?.classList.add('eval-panel--fourw');
+}
+
 function restart() {
 	if (window.ZZReplayPractice?.restart()) return;
 	if (board.length > 0 && board[board.length - 1].filter((c) => c.t != 1).length == boardSize[0]) {

@@ -29,6 +29,8 @@ const SCAN_FILES = [
 	'cancellingsickness.js',
 	'controls.html',
 	'engineWorker.js',
+	'fourwide-core.js',
+	'fourwideWorker.js',
 	'replay.html',
 	'replay.js',
 	'replay-api.js',

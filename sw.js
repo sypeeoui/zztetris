@@ -4,13 +4,13 @@
 // pick up the new files. The 23 MB legal-boards database and the research
 // pc_data.json are deliberately not precached; the mobile shell does not use
 // the analyzer.
-const CACHE_VERSION = 'zztetris-mobile-373ac8dc';
+const CACHE_VERSION = 'zztetris-mobile-d51eb311';
 
 const ASSETS = [
 	'./index.html?mobile=1',
 	'./manifest.webmanifest',
-	'./styles/mobile.css?v=14074b50',
-	'./styles/zztetris.css?v=3329382f',
+	'./styles/mobile.css?v=7b0bc79e',
+	'./styles/zztetris.css?v=bfe3074a',
 	'./styles/replay.css?v=b7d0e65f',
 	'./styles/replay-mobile.css?v=8282d2f7',
 	'./replay.html',
@@ -24,9 +24,9 @@ const ASSETS = [
 	'./styles/paint_bucket.css',
 	'./styles/import_export.css',
 	'./styles/board_settings.css',
-	'./mobile.js?v=41d25377',
-	'./base.js?v=d9f2ead4',
-	'./zztetris.js?v=838bfdde',
+	'./mobile.js?v=85074542',
+	'./base.js?v=ddc921b4',
+	'./zztetris.js?v=aa6bc516',
 	'./stats-config.js?v=87260c9e',
 	'./stats-core.js?v=c13feafa',
 	'./stats.js?v=e29c2d2f',
@@ -40,6 +40,8 @@ const ASSETS = [
 	'./tetris-fumen.js',
 	'./tetrio.js',
 	'./engineWorker.js?v=3df45535',
+	'./fourwide-core.js?v=d44e9dcc',
+	'./fourwideWorker.js?v=61ffb8b9',
 	'./assets/vendor/jquery.min.js',
 	'./assets/vendor/animate.min.css',
 	'./assets/icons/dark.svg',

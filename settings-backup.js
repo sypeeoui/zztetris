@@ -585,6 +585,7 @@
 			settings.STORAGE_KEYS.gravity,
 			settings.STORAGE_KEYS.autoLock,
 			settings.STORAGE_KEYS.holdLock,
+			'zztetris_4w_engine_v1',
 		];
 		for (const key of keys) {
 			try {

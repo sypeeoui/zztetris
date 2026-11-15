@@ -8,7 +8,7 @@ function ctrlsPopup() { // opens a popup window with keybinds
 
 	// Bump ?v when controls.html changes so an already-open popup reloads
 	// instead of showing the cached page.
-	const p = window.open('controls.html?v=d36d7a60', 'popup', 'width=1200,height=800');
+	const p = window.open('controls.html?v=46f3af66', 'popup', 'width=1200,height=800');
 	if (!p) return;
 	var reloading = false;
 
@@ -463,6 +463,63 @@ var evalState = {
 	pcSetupQueue: '',
 };
 var evalControlApi = null;
+
+var fourWState = {
+	settings: {
+		enabled: false,
+		showNext: true,
+		showRoute: false,
+		showAll: false,
+		showSurvival: true,
+		lookahead: 28,
+		tieBreak: 'board',
+	},
+	latestData: null,
+	overlayCells: [],
+	selectedKey: '',
+	hoverKey: '',
+};
+
+const FOURW_SETTINGS_KEY = 'zztetris_4w_engine_v1';
+
+const fourWEngine = {
+	worker: null,
+	pending: null,
+	requestId: 0,
+
+	ensureWorker() {
+		if (this.worker) return;
+		this.worker = new Worker('./fourwideWorker.js?v=61ffb8b9');
+		this.worker.onmessage = (event) => {
+			const data = event.data || {};
+			if (data.type !== 'result' && data.type !== 'error') return;
+			if (!this.pending || this.pending.id !== data.requestId) return;
+			const pending = this.pending;
+			this.pending = null;
+			if (data.type === 'error') pending.reject(new Error(data.error || '4W engine error'));
+			else pending.resolve(data.result);
+		};
+		this.worker.onerror = (event) => {
+			if (!this.pending) return;
+			const pending = this.pending;
+			this.pending = null;
+			pending.reject(new Error(event.message || '4W engine worker failed'));
+		};
+	},
+
+	analyze(payload) {
+		this.ensureWorker();
+		const requestId = ++this.requestId;
+		if (this.pending) {
+			this.pending.reject(new Error('Aborted by new request'));
+			this.pending = null;
+		}
+		return new Promise((resolve, reject) => {
+			this.pending = { resolve, reject, id: requestId };
+			this.worker.postMessage({ type: 'analyze', payload, requestId });
+		});
+	},
+};
 
 const wasmHelper = {
 	worker: null,
@@ -1053,13 +1110,38 @@ function clearActive() {
 	});
 }
 
-function newPiece() {
-	replayHoldLocked = false;
-	while (queue.length < 10) {
-		var shuf = names.shuffle();
-		shuf.map((p) => queue.push(p));
+function fourWQueueTarget() {
+	// Keep 28 real pieces behind the active piece in 4W modes.
+	return isFourWMode() ? 29 : 10;
+}
+
+function ensureQueueLength(targetPieces) {
+	if (!isFourWMode()) {
+		// Preserve the original queue length behavior outside 4W modes.
+		while (queue.length < 10) {
+			const shuf = names.shuffle();
+			for (const p of shuf) queue.push(p);
+			queue.push('|');
+		}
+		return;
+	}
+	let count = 0;
+	for (let i = 0; i < queue.length; i++) {
+		if (queue[i] !== '|') count++;
+	}
+	while (count < targetPieces) {
+		const shuf = names.shuffle();
+		for (const p of shuf) {
+			queue.push(p);
+			count++;
+		}
 		queue.push('|');
 	}
+}
+
+function newPiece() {
+	replayHoldLocked = false;
+	ensureQueueLength(fourWQueueTarget());
 	xPOS = spawn[0];
 	yPOS = spawn[1];
 	rot = 0;
@@ -1335,6 +1417,417 @@ function currentComboForEngine() {
 function currentB2BForEngine() {
 	if (typeof b2b != 'number') return 0;
 	return Math.max(0, Math.floor(b2b));
+}
+
+function isFourWMode() {
+	return (
+		typeof mode !== 'undefined' &&
+		(mode === '4w' || mode === '4w4res' || mode === '4w5res' || mode === '4w6res')
+	);
+}
+
+function fourWWell() {
+	return { start: 3, width: 4 };
+}
+
+function fourWQueueInfo() {
+	const actualPieces = [];
+	for (let i = 0; i < queue.length; i++) {
+		if (queue[i] !== '|') actualPieces.push(queue[i]);
+	}
+	return { actualPieces };
+}
+
+function getFourWStateHash() {
+	const well = fourWWell();
+	const rows = boardRowsForEngine().map(
+		(row) => (row >> well.start) & ((1 << well.width) - 1)
+	);
+	const info = fourWQueueInfo();
+	return JSON.stringify({
+		rows,
+		piece,
+		holdP,
+		queue: info.actualPieces,
+		combo: typeof combo === 'number' ? combo : -1,
+		lookahead: fourWState.settings.lookahead,
+		tieBreak: fourWState.settings.tieBreak,
+		freeHold: !!replayFreeHold,
+	});
+}
+
+function loadFourWSettings() {
+	const defaults = {
+		enabled: false,
+		showNext: true,
+		showRoute: false,
+		showAll: false,
+		showSurvival: true,
+		lookahead: 28,
+		tieBreak: 'board',
+	};
+	let stored = {};
+	try {
+		stored = JSON.parse(localStorage.getItem(FOURW_SETTINGS_KEY) || '{}');
+	} catch (error) {
+		stored = {};
+	}
+	fourWState.settings = Object.assign({}, defaults, stored || {});
+	const lookahead = Math.floor(Number(fourWState.settings.lookahead));
+	fourWState.settings.lookahead = Number.isFinite(lookahead)
+		? Math.max(0, Math.min(28, lookahead))
+		: 28;
+	if (!['board', 'flex', 'low'].includes(fourWState.settings.tieBreak)) {
+		fourWState.settings.tieBreak = 'board';
+	}
+	fourWState.settings.enabled = !!fourWState.settings.enabled;
+	fourWState.settings.showNext = fourWState.settings.showNext !== false;
+	fourWState.settings.showRoute = !!fourWState.settings.showRoute;
+	fourWState.settings.showAll = !!fourWState.settings.showAll;
+	fourWState.settings.showSurvival = fourWState.settings.showSurvival !== false;
+}
+
+function saveFourWSettingsFromUi() {
+	const settings = fourWState.settings;
+	settings.showNext = !!getEvalElement('fourWShowNext')?.checked;
+	settings.showRoute = !!getEvalElement('fourWShowRoute')?.checked;
+	settings.showAll = !!getEvalElement('fourWShowAll')?.checked;
+	settings.showSurvival = !!getEvalElement('fourWShowSurvival')?.checked;
+	settings.lookahead = Math.max(
+		0,
+		Math.min(28, Math.floor(readNumberInput('fourWLookahead', 28, 0)))
+	);
+	settings.tieBreak = getEvalElement('fourWTieBreak')?.value || 'board';
+	try {
+		localStorage.setItem(FOURW_SETTINGS_KEY, JSON.stringify(settings));
+	} catch (error) {
+		// Storage can be unavailable in private mode.
+	}
+}
+
+function applyFourWSettingsToUi() {
+	const settings = fourWState.settings;
+	const setChecked = (id, value) => {
+		const el = getEvalElement(id);
+		if (el) el.checked = !!value;
+	};
+	setChecked('fourWShowNext', settings.showNext);
+	setChecked('fourWShowRoute', settings.showRoute);
+	setChecked('fourWShowAll', settings.showAll);
+	setChecked('fourWShowSurvival', settings.showSurvival);
+	const lookahead = getEvalElement('fourWLookahead');
+	if (lookahead) lookahead.value = String(settings.lookahead);
+	const tieBreak = getEvalElement('fourWTieBreak');
+	if (tieBreak) tieBreak.value = settings.tieBreak;
+}
+
+function setFourWStatus(text, isError = false) {
+	const el = getEvalElement('fourWStatus');
+	if (!el) return;
+	el.textContent = text;
+	el.className = 'fourw-status' + (isError ? ' fourw-status--danger' : '');
+}
+
+function describeFourWMove(candidate) {
+	if (!candidate) return 'none';
+	const pieceChar = enginePieceToChar[candidate.piece] || '?';
+	const hold = candidate.holdUsed ? 'HOLD ' : '';
+	return `${hold}${pieceChar} → x${candidate.x} r${candidate.rotation}`;
+}
+
+function updateFourWStatus(data) {
+	const statusEl = getEvalElement('fourWStatus');
+	const detailEl = getEvalElement('fourWDetail');
+	const barKnown = getEvalElement('fourWBarKnown');
+	const barBreak = getEvalElement('fourWBarBreak');
+	if (!statusEl) return;
+	if (!data) {
+		setFourWStatus('4W Combo Engine is off.');
+		if (detailEl) detailEl.textContent = '';
+		if (barKnown) barKnown.style.width = '0%';
+		if (barBreak) barBreak.style.width = '0%';
+		return;
+	}
+	const comboActive = typeof combo === 'number' && combo >= 0;
+	const best = data.best;
+	const survival = best ? best.survival : 0;
+	const known = data.knownLength || 0;
+	const knownDepth = Math.min(survival, known);
+	const breakPiece =
+		data.breakPiece !== null && data.breakPiece !== undefined
+			? enginePieceToChar[data.breakPiece]
+			: '';
+	let statusClass = 'fourw-status--neutral';
+	let statusText = '';
+	if (!comboActive) {
+		statusClass = 'fourw-status--neutral';
+		statusText =
+			survival > 0
+				? `No active combo — best move starts a new chain (${knownDepth}/${known} known).`
+				: `No active combo — no clearing move. Best recovery: ${describeFourWMove(best)}.`;
+	} else if (knownDepth >= known) {
+		statusClass = 'fourw-status--safe';
+		statusText = `Combo safe — survives ${known}/${known} known pieces.`;
+	} else if (knownDepth === 0) {
+		statusClass = 'fourw-status--danger';
+		statusText = `Combo breaks now — no clearing move. Best recovery: ${describeFourWMove(best)}.`;
+	} else {
+		statusClass = 'fourw-status--warning';
+		statusText = `Combo at risk — breaks at +${knownDepth} (${breakPiece}) after ${knownDepth}/${known} known pieces.`;
+	}
+	statusEl.className = 'fourw-status ' + statusClass;
+	statusEl.textContent = statusText;
+	if (detailEl) {
+		const parts = [`Known ${known} (incl. current)`];
+		if (data.approximate) parts.push('stack above 4 rows (approximate)');
+		if (data.partial) parts.push('search capped');
+		parts.push(`${Math.round(data.elapsedMs || 0)} ms`);
+		detailEl.textContent = parts.join(' · ');
+	}
+	const knownPct = known ? (knownDepth / known) * 100 : 0;
+	const breakPct = Math.max(0, 100 - knownPct);
+	if (barKnown) barKnown.style.width = knownPct + '%';
+	if (barBreak) barBreak.style.width = breakPct + '%';
+	updateFourWBoardStatus(data);
+}
+
+function updateFourWBoardStatus(data) {
+	const canvas = document.getElementById('b');
+	if (!canvas) return;
+	canvas.classList.remove('fourw-safe', 'fourw-warning', 'fourw-danger', 'fourw-neutral');
+	if (!evalState.enabled || !isFourWMode() || !fourWState.settings.showSurvival || !data) return;
+	const comboActive = typeof combo === 'number' && combo >= 0;
+	const best = data.best;
+	const survival = best ? best.survival : 0;
+	const known = data.knownLength || 0;
+	const knownDepth = Math.min(survival, known);
+	let cls = 'fourw-neutral';
+	if (comboActive) {
+		if (knownDepth >= known) cls = 'fourw-safe';
+		else if (knownDepth > 0) cls = 'fourw-warning';
+		else cls = 'fourw-danger';
+	}
+	canvas.classList.add(cls);
+}
+
+function clearFourWOverlay() {
+	fourWState.latestData = null;
+	fourWState.overlayCells = [];
+	fourWState.selectedKey = '';
+	fourWState.hoverKey = '';
+	const canvas = document.getElementById('b');
+	if (canvas) {
+		canvas.classList.remove('fourw-safe', 'fourw-warning', 'fourw-danger', 'fourw-neutral');
+	}
+	const list = getEvalElement('fourWRoutesList');
+	if (list) list.innerHTML = '';
+	const status = getEvalElement('fourWStatus');
+	if (status) {
+		status.className = 'fourw-status';
+		status.textContent = '4W Combo Engine is off.';
+	}
+	const detail = getEvalElement('fourWDetail');
+	if (detail) detail.textContent = '';
+	const barKnown = getEvalElement('fourWBarKnown');
+	const barBreak = getEvalElement('fourWBarBreak');
+	if (barKnown) barKnown.style.width = '0%';
+	if (barBreak) barBreak.style.width = '0%';
+}
+
+function renderFourWCandidates(data) {
+	const list = getEvalElement('fourWRoutesList');
+	if (!list) return;
+	list.innerHTML = '';
+	if (!data || !data.candidates || !data.candidates.length) {
+		list.textContent = 'No placements';
+		fourWState.selectedKey = '';
+		fourWState.hoverKey = '';
+		return;
+	}
+	const candidates = data.candidates;
+	if (!candidates.some((c) => c.key === fourWState.selectedKey)) {
+		fourWState.selectedKey = candidates[0].key;
+	}
+	const visible = fourWState.settings.showAll ? candidates : candidates.slice(0, 1);
+	visible.forEach((candidate, index) => {
+		const item = document.createElement('div');
+		item.className =
+			'eval-route-item fourw-candidate fourw-candidate--' + (candidate.status || 'danger');
+		item.dataset.routeKey = candidate.key;
+		if (candidate.key === fourWState.selectedKey) {
+			item.classList.add('eval-route-item--active');
+		}
+		const pieceChar = enginePieceToChar[candidate.piece] || '?';
+		const hold = candidate.holdUsed ? 'HOLD ' : '';
+		const known = data.knownLength || 0;
+		const survival = candidate.survival || 0;
+		const survivalText =
+			survival >= known
+				? `${known}/${known} known`
+				: survival > 0
+					? `breaks at +${survival}`
+					: 'no clear';
+		item.textContent = `${index + 1}. ${hold}${pieceChar} → x${candidate.x} r${candidate.rotation} — ${survivalText}`;
+		item.title = 'Click to inspect this placement';
+		item.addEventListener('mouseenter', () => {
+			fourWState.hoverKey = candidate.key;
+			rebuildFourWOverlay();
+		});
+		item.addEventListener('mouseleave', () => {
+			fourWState.hoverKey = '';
+			rebuildFourWOverlay();
+		});
+		item.addEventListener('click', () => {
+			fourWState.selectedKey = candidate.key;
+			renderFourWCandidates(data);
+			rebuildFourWOverlay();
+		});
+		list.appendChild(item);
+	});
+}
+
+function rebuildFourWOverlay() {
+	const data = fourWState.latestData;
+	if (!data || !data.candidates || !data.candidates.length) {
+		fourWState.overlayCells = [];
+		return;
+	}
+	const key = fourWState.hoverKey || fourWState.selectedKey || data.candidates[0].key;
+	const candidate = data.candidates.find((c) => c.key === key) || data.candidates[0];
+	const cells = [];
+	if (fourWState.settings.showNext) {
+		for (const cell of candidate.cells || []) {
+			cells.push({
+				x: cell.x,
+				y: cell.y,
+				piece: cell.piece,
+				step: 0,
+				status: candidate.status,
+			});
+		}
+	}
+	if (
+		fourWState.settings.showRoute &&
+		candidate.key === data.candidates[0].key &&
+		Array.isArray(data.route) &&
+		data.route.length > 1
+	) {
+		let lift = 0;
+		for (let step = 1; step < data.route.length; step++) {
+			lift += data.route[step - 1].cleared || 0;
+			const move = data.route[step];
+			for (const cell of move.cells || []) {
+				cells.push({
+					x: cell.x,
+					y: cell.y + lift,
+					piece: cell.piece,
+					step,
+					status: 'route',
+				});
+			}
+		}
+	}
+	fourWState.overlayCells = cells;
+	updateFourWBoardStatus(data);
+}
+
+function drawFourWOverlay(phase = 'all') {
+	if (!evalState.enabled || !isFourWMode() || !fourWState.overlayCells.length) return;
+	const drawShadows = phase === 'all' || phase === 'shadows';
+	const drawNext = phase === 'all' || phase === 'next';
+	const drawCell = (cell, isNext) => {
+		const boardRowIndex = boardSize[1] - 1 - cell.y;
+		const drawY = boardRowIndex - hiddenRows + 3;
+		if (!inRange(drawY, 0, boardSize[1])) return;
+		const pieceHex = color[cell.piece] || '#ffffff';
+		if (isNext) {
+			const statusColor =
+				cell.status === 'safe'
+					? '#4caf50'
+					: cell.status === 'warning'
+						? '#ffc107'
+						: cell.status === 'danger'
+							? '#f44336'
+							: '#4a90e2';
+			ctx.fillStyle = hexToRgba(pieceHex, 0.55);
+			ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
+			ctx.strokeStyle = statusColor;
+			ctx.lineWidth = 2;
+			ctx.strokeRect(cell.x * cellSize + 1.5, drawY * cellSize + 1.5, cellSize - 3, cellSize - 3);
+		} else {
+			const fade = Math.pow(0.62, Math.max(0, cell.step - 1));
+			ctx.fillStyle = hexToRgba(pieceHex, Math.max(0.04, 0.18 * fade));
+			ctx.fillRect(cell.x * cellSize + 1, drawY * cellSize + 1, cellSize - 2, cellSize - 2);
+			ctx.strokeStyle = hexToRgba(pieceHex, Math.max(0.1, 0.45 * fade));
+			ctx.lineWidth = 1;
+			ctx.strokeRect(cell.x * cellSize + 2, drawY * cellSize + 2, cellSize - 4, cellSize - 4);
+		}
+	};
+	if (drawShadows) {
+		for (const cell of fourWState.overlayCells) {
+			if (cell.step !== 0) drawCell(cell, false);
+		}
+	}
+	if (drawNext) {
+		for (const cell of fourWState.overlayCells) {
+			if (cell.step === 0) drawCell(cell, true);
+		}
+	}
+}
+
+async function analyzeFourW(forceRefresh = false) {
+	if (!isFourWMode()) return;
+	if (evalState.inFlight) {
+		evalState.refreshQueued = true;
+		return;
+	}
+	const generation = evalState.analysisGeneration;
+	const stateHash = getFourWStateHash();
+	if (!forceRefresh && stateHash === evalState.lastAppliedHash) return;
+	const pieceId = charToEnginePiece[piece];
+	if (pieceId === undefined) {
+		setFourWStatus('No active piece to analyze.', true);
+		return;
+	}
+	const well = fourWWell();
+	const rows = boardRowsForEngine().map(
+		(row) => (row >> well.start) & ((1 << well.width) - 1)
+	);
+	const info = fourWQueueInfo();
+	const queueIds = info.actualPieces
+		.map((p) => charToEnginePiece[p])
+		.filter((v) => v !== undefined);
+	const payload = {
+		rows,
+		piece: pieceId,
+		hold: holdP ? charToEnginePiece[holdP] : null,
+		queue: queueIds,
+		lookahead: fourWState.settings.lookahead,
+		tieBreak: fourWState.settings.tieBreak,
+		freeHold: !!replayFreeHold,
+		combo: typeof combo === 'number' ? combo : -1,
+	};
+	evalState.inFlight = true;
+	evalState.lastRequestAt = Date.now();
+	setFourWStatus('Analyzing 4W combo...');
+	try {
+		const result = await fourWEngine.analyze(payload);
+		if (generation !== evalState.analysisGeneration) return;
+		fourWState.latestData = result;
+		evalState.lastAppliedHash = stateHash;
+		renderFourWCandidates(result);
+		rebuildFourWOverlay();
+		updateFourWStatus(result);
+	} catch (error) {
+		if (generation !== evalState.analysisGeneration) return;
+		fourWState.latestData = null;
+		fourWState.overlayCells = [];
+		renderFourWCandidates(null);
+		updateFourWBoardStatus(null);
+		setFourWStatus(`4W engine error: ${error.message}`, true);
+	} finally {
+		finishAnalysis();
+	}
 }
 
 function syncEvalChainInputsFromGame() {
@@ -2955,6 +3448,10 @@ function finishAnalysis() {
 }
 
 async function analyzeWithEngine(forceRefresh = false) {
+	if (isFourWMode()) {
+		await analyzeFourW(forceRefresh);
+		return;
+	}
 	if (evalState.inFlight) {
 		// A state change arrived while a search is running; re-run once it
 		// finishes so the route list always reflects the current board.
@@ -3535,11 +4032,23 @@ window.evalDebugDump = async function evalDebugDump(options = {}) {
 function setEvaluationMode(enabled) {
 	evalState.enabled = enabled;
 	evalState.optionsHidden = enabled;
+	if (isFourWMode()) {
+		fourWState.settings.enabled = enabled;
+		try {
+			localStorage.setItem(FOURW_SETTINGS_KEY, JSON.stringify(fourWState.settings));
+		} catch (error) {
+			// Storage can be unavailable in private mode.
+		}
+	}
 	if (!enabled) {
 		evalState.overlayCells = [];
 		evalState.hoverRouteKey = '';
 		clearPcSetupPlan();
-		setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
+		if (isFourWMode()) {
+			clearFourWOverlay();
+		} else {
+			setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
+		}
 	}
 	applyCompactOptionsVisibility();
 	if (enabled) {
@@ -3618,6 +4127,18 @@ function initEvaluationUi() {
 	const b2bInput = getEvalElement('evalCurrentB2b');
 	if (!modeToggle || !analyzeBtn || !routeList || !toggleOptionsBtn || !apiBaseInput || !reachabilityBtn || !inputRateEl) {
 		return;
+	}
+
+	const fourWMode = isFourWMode();
+	const evalPanel = getEvalElement('evalPanel');
+	if (fourWMode) {
+		evalPanel?.classList.add('eval-panel--fourw');
+		const label = document.querySelector('label[for="evalModeToggle"]');
+		if (label) label.textContent = '4W Combo Engine';
+		loadFourWSettings();
+		applyFourWSettingsToUi();
+	} else {
+		evalPanel?.classList.remove('eval-panel--fourw');
 	}
 
 	if (LS.evalApiBase) {
@@ -3715,6 +4236,24 @@ function initEvaluationUi() {
 		});
 	});
 
+	if (fourWMode) {
+		['fourWShowNext', 'fourWShowRoute', 'fourWShowAll', 'fourWShowSurvival'].forEach((id) => {
+			getEvalElement(id)?.addEventListener('change', () => {
+				saveFourWSettingsFromUi();
+				renderFourWCandidates(fourWState.latestData);
+				rebuildFourWOverlay();
+			});
+		});
+		getEvalElement('fourWLookahead')?.addEventListener('change', () => {
+			saveFourWSettingsFromUi();
+			if (evalState.enabled) analyzeFourW(true);
+		});
+		getEvalElement('fourWTieBreak')?.addEventListener('change', () => {
+			saveFourWSettingsFromUi();
+			if (evalState.enabled) analyzeFourW(true);
+		});
+	}
+
 	toggleOptionsBtn.addEventListener('click', () => {
 		evalState.optionsHidden = !evalState.optionsHidden;
 		applyCompactOptionsVisibility();
@@ -3722,9 +4261,19 @@ function initEvaluationUi() {
 
 	applyCompactOptionsVisibility();
 	syncEvalChainInputsFromGame();
-	initPresets();
-	loadPcSetupData();
-	setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
+	if (!fourWMode) {
+		initPresets();
+		loadPcSetupData();
+	}
+	if (fourWMode) {
+		setFourWStatus('4W Combo Engine is off.');
+		if (fourWState.settings.enabled) {
+			modeToggle.checked = true;
+			setEvaluationMode(true);
+		}
+	} else {
+		setEvalStatus(`Evaluation is disabled. (PC analyzer build ${ZZ_PC_BUILD})`);
+	}
 	evalUiReady = true;
 }
 
@@ -4926,6 +5475,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		ctx.fillRect(0, 0, boardSize[0] * cellSize, boardSize[1] * cellSize);
 		// Route shadows go behind the stack, the next placement on top of it.
 		drawEvaluationOverlay('shadows');
+		drawFourWOverlay('shadows');
 
 		board.map((y, i) => {
 			y.map((x, ii) => {
@@ -4939,6 +5489,7 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 		});
 
 		drawEvaluationOverlay('next');
+		drawFourWOverlay('next');
 		window.requestAnimationFrame(render);
 	}
 	/*
@@ -4979,11 +5530,7 @@ function shuffleQueue() {
 	piece = tempQueue.shift();
 	queue = tempQueue;
 
-	while (queue.length < 10) {
-		var shuf = names.shuffle();
-		shuf.map((p) => queue.push(p));
-		queue.push('|');
-	}
+	ensureQueueLength(fourWQueueTarget());
 	xPOS = spawn[0];
 	yPOS = spawn[1];
 	rot = 0;
@@ -5011,11 +5558,7 @@ function shuffleQueuePlusHold() {
 	piece = tempQueue.shift();
 	queue = tempQueue;
 
-	while (queue.length < 10) {
-		var shuf = names.shuffle();
-		shuf.map((p) => queue.push(p));
-		queue.push('|');
-	}
+	ensureQueueLength(fourWQueueTarget());
 	xPOS = spawn[0];
 	yPOS = spawn[1];
 	rot = 0;
