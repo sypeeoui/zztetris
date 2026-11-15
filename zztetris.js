@@ -134,6 +134,35 @@ function garbageHeight() {
 	return 0;
 }
 
+// Restore the side walls above the current wall stack without moving the
+// well stack. Used when endless garbage is off: the cleared rows fall away
+// normally, but the mode must not turn into a 10-wide board.
+function preserveWalls(lines, well) {
+	if (!lines) return;
+	let topWall = board.length;
+	for (let row = 0; row < board.length; row++) {
+		let hasWall = false;
+		for (let col = 0; col < boardSize[0]; col++) {
+			if (col >= well.start && col < well.start + well.width) continue;
+			if (board[row][col] && board[row][col].t === 1) {
+				hasWall = true;
+				break;
+			}
+		}
+		if (hasWall) {
+			topWall = row;
+			break;
+		}
+	}
+	const start = Math.max(0, topWall - lines);
+	for (let row = start; row < topWall; row++) {
+		for (let col = 0; col < boardSize[0]; col++) {
+			if (col >= well.start && col < well.start + well.width) continue;
+			board[row][col] = { t: 1, c: 'X' };
+		}
+	}
+}
+
 // 4W and 3W practice modes always keep their side walls. When `addGarbage`
 // is true, each cleared line is also replaced by a fresh garbage line at the
 // bottom of the well; when false, the well is left empty so the stack can
@@ -150,24 +179,22 @@ function addInfiniteGarbage(lines, addGarbage = true) {
 	const well = wells[mode];
 	if (!well) return;
 
-	for (let i = 0; i < lines; i++) {
-		const hole = addGarbage
-			? well.start + Math.floor(Math.random() * well.width)
-			: -1;
-		const row = [];
-		for (let col = 0; col < boardSize[0]; col++) {
-			if (col >= well.start && col < well.start + well.width) {
-				row.push(
-					addGarbage && col !== hole
-						? { t: 1, c: 'X' }
-						: { t: 0, c: '' }
-				);
-			} else {
-				row.push({ t: 1, c: 'X' });
+	if (!addGarbage) {
+		preserveWalls(lines, well);
+	} else {
+		for (let i = 0; i < lines; i++) {
+			const hole = well.start + Math.floor(Math.random() * well.width);
+			const row = [];
+			for (let col = 0; col < boardSize[0]; col++) {
+				if (col >= well.start && col < well.start + well.width) {
+					row.push(col === hole ? { t: 0, c: '' } : { t: 1, c: 'X' });
+				} else {
+					row.push({ t: 1, c: 'X' });
+				}
 			}
+			board.shift();
+			board.push(row);
 		}
-		board.shift();
-		board.push(row);
 	}
 
 	xPOS = spawn[0];
