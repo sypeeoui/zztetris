@@ -170,9 +170,9 @@ function preserveWalls(lines, well) {
 }
 
 // 4W and 3W practice modes always keep their side walls. When `addGarbage`
-// is true, each cleared line is also replaced by a fresh garbage line at the
-// bottom of the well; when false, the well is left empty so the stack can
-// run out without the mode turning into a 10-wide board.
+// is true, each line is also replaced by a fresh garbage line at the bottom
+// of the well (used by the attack simulator); when false, only the side
+// walls are restored and the well stack can run out.
 function addInfiniteGarbage(lines, addGarbage = true) {
 	if (!lines) return;
 	const wells = {

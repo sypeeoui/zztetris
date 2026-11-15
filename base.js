@@ -5335,24 +5335,21 @@ function callback(gravity=700, special_restart=false, cheese=false) {
 			board.unshift(aRow());
 		}
 
+		var cleared = clearedIndexes.length;
+
 		if (permanentLinesCleared > 0) {
-			// Respawn permanent garbage at the bottom
-			// Use the current messiness/permanent settings from the UI if available, 
-			// otherwise default to 0% messiness and permanent=true.
+			// Respawn permanent garbage at the bottom. In 4W/3W modes this
+			// keeps the hole inside the well and preserves the side walls.
 			const messiness = document.getElementById('practiceMessiness') ? parseInt(document.getElementById('practiceMessiness').value) : 0;
 			addPracticeGarbage(permanentLinesCleared, messiness, true);
 		}
 
-		// 4W/3W always keep their side walls. The well only gets fresh
-		// garbage when the user asked for endless garbage: Permanent practice
-		// garbage or the attack simulator.
-		const endlessGarbage =
-			window.ZZAttackSim?.isActive?.() ||
-			!!document.getElementById('practicePermanent')?.checked;
+		// 4W/3W always keep their side walls, but cleared lines are not
+		// replaced automatically. Permanent garbage respawns above; the
+		// attack simulator adds its own garbage when it sends attacks.
 		if (typeof addInfiniteGarbage === 'function') {
-			addInfiniteGarbage(garbageLinesCleared, endlessGarbage);
+			addInfiniteGarbage(cleared, false);
 		}
-		var cleared = clearedIndexes.length;
 
 		if (tspin) {
 			spinText = mini ? 'T-SPIN MINI' : 'T-SPIN';

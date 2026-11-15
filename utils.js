@@ -122,9 +122,75 @@ function addPracticeGarbageUI() {
 
 let lastHoleCol = -1;
 
+// 4W/3W practice modes have a fixed well. Practice garbage must keep the
+// side walls and put the hole inside the well; a hole outside the well would
+// make the row impossible to clear.
+function practiceGarbageWell() {
+	if (typeof mode === 'undefined') return null;
+	const wells = {
+		'4w': { start: 3, width: 4 },
+		'4w4res': { start: 3, width: 4 },
+		'4w5res': { start: 3, width: 4 },
+		'4w6res': { start: 3, width: 4 },
+		'3w': { start: 3, width: 3 },
+	};
+	return wells[mode] || null;
+}
+
+function practiceGarbageHole(messiness, well) {
+	const min = well ? well.start : 0;
+	const max = well ? well.start + well.width : boardSize[0];
+	const inRange = lastHoleCol >= min && lastHoleCol < max;
+	if (!inRange || Math.random() * 100 < messiness) {
+		let next = min + Math.floor(Math.random() * (max - min));
+		if (messiness > 0 && inRange) {
+			while (next === lastHoleCol) {
+				next = min + Math.floor(Math.random() * (max - min));
+			}
+		}
+		lastHoleCol = next;
+	}
+	return lastHoleCol;
+}
+
+function practiceGarbageRow(permanent, messiness, well) {
+	const hole = practiceGarbageHole(messiness, well);
+	const row = [];
+	for (let c = 0; c < boardSize[0]; c++) {
+		if (well && (c < well.start || c >= well.start + well.width)) {
+			row.push({ t: 1, c: 'X' });
+		} else if (c === hole) {
+			row.push({ t: 0, c: '' });
+		} else {
+			const cell = { t: 1, c: 'X' };
+			if (permanent) cell.permanent = true;
+			row.push(cell);
+		}
+	}
+	return row;
+}
+
+function practiceEmptyRow(well) {
+	if (!well) return aRow();
+	const row = [];
+	for (let c = 0; c < boardSize[0]; c++) {
+		row.push(
+			c >= well.start && c < well.start + well.width
+				? { t: 0, c: '' }
+				: { t: 1, c: 'X' }
+		);
+	}
+	return row;
+}
+
 function addPracticeGarbage(layers, messiness, permanent, rerandomize = false) {
-	if (lastHoleCol === -1) lastHoleCol = Math.floor(Math.random() * 10);
-	
+	const well = practiceGarbageWell();
+	if (lastHoleCol === -1) {
+		lastHoleCol = well
+			? well.start + Math.floor(Math.random() * well.width)
+			: Math.floor(Math.random() * boardSize[0]);
+	}
+
 	if (rerandomize) {
 		// Keep the number of permanent garbage rows in sync with the layer
 		// input. Adding layers pushes the stack up; removing layers lets the
@@ -132,85 +198,32 @@ function addPracticeGarbage(layers, messiness, permanent, rerandomize = false) {
 		const existing = board.filter((row) => row.some((cell) => cell.permanent)).length;
 		if (layers > existing) {
 			for (let i = existing; i < layers; i++) {
-				if (Math.random() * 100 < messiness || lastHoleCol === -1) {
-					let nextCol = Math.floor(Math.random() * 10);
-					if (messiness > 0) {
-						while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
-					}
-					lastHoleCol = nextCol;
-				}
-
-				let garbageRow = [];
-				for (let c = 0; c < 10; c++) {
-					if (c === lastHoleCol) {
-						garbageRow.push({ t: 0, c: '' });
-					} else {
-						garbageRow.push({ t: 1, c: 'X', permanent: true });
-					}
-				}
-
 				board.shift();
-				board.push(garbageRow);
+				board.push(practiceGarbageRow(true, messiness, well));
 			}
 		} else if (layers < existing) {
 			for (let i = existing; i > layers; i--) {
 				const index = board.findIndex((row) => row.some((cell) => cell.permanent));
 				if (index === -1) break;
 				board.splice(index, 1);
-				board.unshift(aRow());
+				board.unshift(practiceEmptyRow(well));
 			}
 		}
 
 		// Rerandomize all remaining permanent lines.
 		board.forEach((row, rowIndex) => {
-			if (row.some(cell => cell.permanent)) {
-				// Randomize hole for this row
-				if (Math.random() * 100 < messiness) {
-					let nextCol = Math.floor(Math.random() * 10);
-					if (messiness > 0) {
-						while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
-					}
-					lastHoleCol = nextCol;
-				}
-				
-				let newRow = [];
-				for (let c = 0; c < 10; c++) {
-					if (c === lastHoleCol) {
-						newRow.push({ t: 0, c: '' });
-					} else {
-						newRow.push({ t: 1, c: 'X', permanent: true });
-					}
-				}
-				board[rowIndex] = newRow;
+			if (row.some((cell) => cell.permanent)) {
+				board[rowIndex] = practiceGarbageRow(true, messiness, well);
 			}
 		});
 	} else {
-		// Add new lines
+		// Add new lines.
 		for (let i = 0; i < layers; i++) {
-			if (Math.random() * 100 < messiness || i === 0 && lastHoleCol === -1) {
-				let nextCol = Math.floor(Math.random() * 10);
-				if (messiness > 0) {
-					while (nextCol === lastHoleCol) nextCol = Math.floor(Math.random() * 10);
-				}
-				lastHoleCol = nextCol;
-			}
-			
-			let garbageRow = [];
-			for (let c = 0; c < 10; c++) {
-				if (c === lastHoleCol) {
-					garbageRow.push({ t: 0, c: '' });
-				} else {
-					let cell = { t: 1, c: 'X' };
-					if (permanent) cell.permanent = true;
-					garbageRow.push(cell);
-				}
-			}
-			
 			board.shift();
-			board.push(garbageRow);
+			board.push(practiceGarbageRow(permanent, messiness, well));
 		}
 	}
-	
+
 	xPOS = spawn[0];
 	yPOS = spawn[1];
 	updateGhost();
